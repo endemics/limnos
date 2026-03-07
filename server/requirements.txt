@@ -1,0 +1,7 @@
+anthropic
+boto3
+duckdb
+mcp[cli]
+pydantic
+pyyaml
+structlog

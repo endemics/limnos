@@ -1,0 +1,48 @@
+{
+  "name": "Limnos",
+  "image": "mcr.microsoft.com/devcontainers/base:debian",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "20"
+    },
+    "ghcr.io/devcontainers/features/go:1": {
+      "version": "1.26"
+    },
+    "ghcr.io/devcontainers/features/python:1": {
+      "version": "3.13"
+    },
+    "ghcr.io/devcontainers/features/aws-cli:1": {}
+  },
+  "postCreateCommand": "sudo apt-get update && sudo apt-get install -y build-essential && npm install -g @anthropic-ai/claude-code && pip install -r server/requirements.txt pytest ruff && go mod download 2>/dev/null || true && go install golang.org/x/tools/cmd/goimports@latest && go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest",
+  "mounts": [
+    "source=${localEnv:HOME}/.claude,target=/home/vscode/.claude,type=bind"
+  ],
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "golang.go",
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "charliermarsh.ruff",
+        "anthropic.claude-code"
+      ],
+      "settings": {
+        "go.toolsManagement.checkForUpdates": "local",
+        "go.useLanguageServer": true,
+        "[python]": {
+          "editor.defaultFormatter": "charliermarsh.ruff"
+        }
+      }
+    }
+  },
+  "remoteEnv": {
+    "AWS_REGION": "${localEnv:AWS_REGION:us-east-1}",
+    "AWS_ACCESS_KEY_ID": "${localEnv:AWS_ACCESS_KEY_ID}",
+    "AWS_SECRET_ACCESS_KEY": "${localEnv:AWS_SECRET_ACCESS_KEY}",
+    "CONFIG_PATH": "${containerWorkspaceFolder}/config/config.example.yaml"
+  },
+  "containerEnv": {
+    "CLAUDE_CONFIG_DIR": "/home/vscode/.claude"
+  },
+  "remoteUser": "vscode"
+}
