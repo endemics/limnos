@@ -1,0 +1,69 @@
+# Limnos — Configuration
+# Copy to config.yaml and fill in your values
+
+aws:
+  region: us-east-1
+  # Credentials: prefer instance profile / env vars over hardcoded keys
+  # Leave blank to use AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY env vars,
+  # or an EC2/ECS instance profile.
+  access_key_id: ""
+  secret_access_key: ""
+  # Athena settings (for fallback queries)
+  athena_output_location: "s3://your-bucket/athena-results/"
+  athena_workgroup: "primary"
+
+# Tables registered for querying.
+# Each entry maps a logical name to an S3 path.
+tables:
+  - name: orders
+    s3_path: "s3://your-datalake/warehouse/orders/"
+    format: parquet               # "parquet" or "iceberg"
+    partition_columns:
+      - name: order_date
+        type: date
+      - name: region
+        type: string
+    description: "Customer orders, partitioned by date and region"
+
+  - name: events
+    s3_path: "s3://your-datalake/warehouse/events/"
+    format: iceberg
+    description: "User events (Iceberg table, catalog via Glue)"
+
+  - name: products
+    s3_path: "s3://your-datalake/warehouse/products/"
+    format: parquet
+    description: "Product catalog — small, no partitions"
+
+# Query engine settings
+engine:
+  # Max bytes DuckDB will scan before escalating to Athena
+  # Default: 10 GB. Set to 0 to always use Athena.
+  duckdb_max_scan_bytes: 10_737_418_240   # 10 GB
+  # Max rows returned per query (safety limit)
+  default_row_limit: 1000
+  max_row_limit: 50000
+  # DuckDB worker pool size (for HTTP transport)
+  worker_pool_size: 4
+  # Query timeout in seconds
+  query_timeout_seconds: 120
+
+# Schema cache settings
+cache:
+  db_path: "/tmp/s3_mcp_schema_cache.db"
+  # How old (hours) before metadata is considered stale
+  stale_threshold_hours: 24
+  # Auto-refresh stale tables on first query (adds latency)
+  auto_refresh: true
+
+# Cost thresholds (USD)
+# Queries estimated above these values will warn before running
+cost_gates:
+  warn_threshold_usd: 0.10
+  block_threshold_usd: 1.00   # Requires force=true to override
+
+# Logging
+logging:
+  level: INFO        # DEBUG, INFO, WARNING, ERROR
+  format: json       # "json" or "text"
+  query_log: true    # Log every query with cost/bytes to structured log
