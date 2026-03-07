@@ -1,0 +1,58 @@
+version: "3.9"
+
+# ── Phase 1: Python MCP server only (simplest, for local dev / Claude Desktop)
+# docker-compose up mcp-server
+#
+# ── Phase 2: Full stack with Go gateway (for team use)
+# docker-compose --profile gateway up
+
+services:
+
+  # ── Phase 1: Python MCP server ─────────────────────────────────────────────
+  mcp-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./config/config.yaml:/app/config/config.yaml:ro
+      - mcp-cache:/tmp/s3_mcp_cache
+    environment:
+      - AWS_REGION=${AWS_REGION:-us-east-1}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+      - CONFIG_PATH=/app/config/config.yaml
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  # ── Phase 2: Go gateway (multi-user) ───────────────────────────────────────
+  gateway:
+    profiles: ["gateway"]
+    build:
+      context: .
+      dockerfile: Dockerfile.gateway
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./config/config.yaml:/app/config/config.yaml:ro
+      - mcp-cache:/tmp/s3_mcp_cache
+    environment:
+      - AWS_REGION=${AWS_REGION:-us-east-1}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+      - CONFIG_PATH=/app/config/config.yaml
+      - GATEWAY_API_KEYS=${GATEWAY_API_KEYS:-}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+volumes:
+  mcp-cache:
