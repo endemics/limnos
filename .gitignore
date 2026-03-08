@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# Test & coverage
+.coverage
+coverage.txt
+.pytest_cache/
+htmlcov/
+*.xml
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# Go
+gateway/gateway
+*.test
+
+# Temp / OS
+.DS_Store
+*.tmp
+*.log
