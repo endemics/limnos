@@ -199,8 +199,8 @@ func TestShutdown_KillsProcess(t *testing.T) {
 	t.Cleanup(func() {
 		// Safety net in case Shutdown didn't kill it (test failure path).
 		if cmd.Process != nil {
-			cmd.Process.Kill()
-			cmd.Wait()
+			_ = cmd.Process.Kill()
+			_ = cmd.Wait()
 		}
 	})
 

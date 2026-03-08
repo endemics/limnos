@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 
 import boto3
 import structlog
@@ -24,7 +24,7 @@ _PARTITION_RE = re.compile(r"^([^=]+)=(.+)$")
 @dataclass
 class DiscoveredPartition:
     path: str
-    values: Dict[str, str]     # col -> value
+    values: Dict[str, str]  # col -> value
     file_count: int
     total_bytes: int
 
@@ -49,17 +49,21 @@ def discover_partitions(
 
     # Collect all .parquet files
     paginator = s3_client.get_paginator("list_objects_v2")
-    pages = paginator.paginate(Bucket=bucket, Prefix=prefix, PaginationConfig={"MaxItems": max_keys})
+    pages = paginator.paginate(
+        Bucket=bucket, Prefix=prefix, PaginationConfig={"MaxItems": max_keys}
+    )
 
     # Group files by their partition path
-    partition_map: Dict[str, Dict] = defaultdict(lambda: {"files": 0, "bytes": 0, "values": {}})
+    partition_map: Dict[str, Dict] = defaultdict(
+        lambda: {"files": 0, "bytes": 0, "values": {}}
+    )
 
     for page in pages:
         for obj in page.get("Contents", []):
             key = obj["Key"]
             if not key.endswith(".parquet"):
                 continue
-            relative = key[len(prefix):]
+            relative = key[len(prefix) :]
             parts = relative.split("/")[:-1]  # drop filename
 
             partition_values: Dict[str, str] = {}

@@ -11,7 +11,7 @@ For production, consider using PyIceberg with a Glue or REST catalog instead.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
 import boto3
@@ -20,10 +20,18 @@ import structlog
 logger = structlog.get_logger()
 
 _ICEBERG_TYPE_MAP = {
-    "boolean": "BOOLEAN", "int": "INTEGER", "long": "BIGINT",
-    "float": "FLOAT", "double": "DOUBLE", "date": "DATE",
-    "time": "TIME", "timestamp": "TIMESTAMP", "timestamptz": "TIMESTAMPTZ",
-    "string": "VARCHAR", "uuid": "UUID", "binary": "BLOB",
+    "boolean": "BOOLEAN",
+    "int": "INTEGER",
+    "long": "BIGINT",
+    "float": "FLOAT",
+    "double": "DOUBLE",
+    "date": "DATE",
+    "time": "TIME",
+    "timestamp": "TIMESTAMP",
+    "timestamptz": "TIMESTAMPTZ",
+    "string": "VARCHAR",
+    "uuid": "UUID",
+    "binary": "BLOB",
 }
 
 
@@ -134,7 +142,9 @@ def _read_version_hint(s3_client, bucket: str, meta_prefix: str) -> int:
                 except ValueError:
                     pass
         if not versions:
-            raise FileNotFoundError(f"No Iceberg metadata found at s3://{bucket}/{meta_prefix}")
+            raise FileNotFoundError(
+                f"No Iceberg metadata found at s3://{bucket}/{meta_prefix}"
+            )
         return max(versions)
 
 
@@ -147,19 +157,30 @@ def _parse_schema(schema: Dict[str, Any]) -> List[IcebergColumn]:
     columns = []
     for f in schema.get("fields", []):
         dtype_raw = f.get("type", "string")
-        dtype = _ICEBERG_TYPE_MAP.get(dtype_raw, dtype_raw.upper()) if isinstance(dtype_raw, str) else "STRUCT"
-        columns.append(IcebergColumn(
-            field_id=f.get("id", 0), name=f.get("name", ""),
-            dtype=dtype, required=f.get("required", False), doc=f.get("doc", ""),
-        ))
+        dtype = (
+            _ICEBERG_TYPE_MAP.get(dtype_raw, dtype_raw.upper())
+            if isinstance(dtype_raw, str)
+            else "STRUCT"
+        )
+        columns.append(
+            IcebergColumn(
+                field_id=f.get("id", 0),
+                name=f.get("name", ""),
+                dtype=dtype,
+                required=f.get("required", False),
+                doc=f.get("doc", ""),
+            )
+        )
     return columns
 
 
 def _parse_partition_spec(spec: Dict[str, Any]) -> List[IcebergPartitionField]:
     return [
         IcebergPartitionField(
-            source_id=f.get("source-id", 0), field_id=f.get("field-id", 0),
-            name=f.get("name", ""), transform=f.get("transform", "identity"),
+            source_id=f.get("source-id", 0),
+            field_id=f.get("field-id", 0),
+            name=f.get("name", ""),
+            transform=f.get("transform", "identity"),
         )
         for f in spec.get("fields", [])
     ]

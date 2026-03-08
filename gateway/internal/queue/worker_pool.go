@@ -113,7 +113,7 @@ func (p *WorkerPool) MetricsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{"workers": metrics})
+	_ = json.NewEncoder(w).Encode(map[string]any{"workers": metrics})
 }
 
 // Shutdown kills all worker processes.
@@ -123,7 +123,7 @@ func (p *WorkerPool) Shutdown() {
 	for _, w := range p.workers {
 		if w.cmd != nil && w.cmd.Process != nil {
 			slog.Info("stopping_worker", "id", w.ID)
-			w.cmd.Process.Kill()
+			_ = w.cmd.Process.Kill()
 		}
 	}
 }
@@ -162,7 +162,7 @@ func (p *WorkerPool) startWorker(id int) (*Worker, error) {
 
 	// Wait for worker to become healthy
 	if err := p.waitHealthy(w, p.cfg.StartTimeout); err != nil {
-		cmd.Process.Kill()
+		_ = cmd.Process.Kill()
 		return nil, fmt.Errorf("worker %d never became healthy: %w", id, err)
 	}
 	w.healthy.Store(true)
@@ -177,7 +177,7 @@ func (p *WorkerPool) waitHealthy(w *Worker, timeout time.Duration) error {
 	for time.Now().Before(deadline) {
 		resp, err := client.Get(healthURL)
 		if err == nil && resp.StatusCode == http.StatusOK {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			return nil
 		}
 		time.Sleep(500 * time.Millisecond)
@@ -206,7 +206,7 @@ func (p *WorkerPool) healthCheckLoop() {
 					}
 				} else {
 					w.healthy.Store(true)
-					resp.Body.Close()
+					_ = resp.Body.Close()
 				}
 			}(w)
 		}
@@ -216,8 +216,8 @@ func (p *WorkerPool) healthCheckLoop() {
 func (p *WorkerPool) restartWorker(w *Worker) {
 	slog.Info("restarting_worker", "id", w.ID)
 	if w.cmd != nil && w.cmd.Process != nil {
-		w.cmd.Process.Kill()
-		w.cmd.Wait()
+		_ = w.cmd.Process.Kill()
+		_ = w.cmd.Wait()
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), p.cfg.StartTimeout)

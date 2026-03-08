@@ -13,7 +13,9 @@ from tools import format_table
 class SampleDataInput(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
 
-    table: str = Field(..., description="Table name from datalake_list_datasets.", min_length=1)
+    table: str = Field(
+        ..., description="Table name from datalake_list_datasets.", min_length=1
+    )
     n: int = Field(default=10, description="Number of rows to return.", ge=1, le=500)
     columns: list[str] = Field(
         default_factory=list,
@@ -24,7 +26,9 @@ class SampleDataInput(BaseModel):
 class EstimateQueryInput(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
 
-    table: str = Field(..., description="Table name from datalake_list_datasets.", min_length=1)
+    table: str = Field(
+        ..., description="Table name from datalake_list_datasets.", min_length=1
+    )
     question: str = Field(
         ...,
         description="Natural language question or SQL query to estimate.",
@@ -66,7 +70,7 @@ def register(mcp: FastMCP) -> None:
         Returns:
             str: Markdown table with sample rows and query metadata.
         """
-        state  = ctx.request_context.lifespan_state
+        state = ctx.request_context.lifespan_state
         config = state["config"]
         engine = state["duckdb_engine"]
 
@@ -123,9 +127,9 @@ def register(mcp: FastMCP) -> None:
                  total_cost_usd, confidence, partition_filter_detected,
                  warning (optional).
         """
-        state          = ctx.request_context.lifespan_state
-        config         = state["config"]
-        cache          = state["cache"]
+        state = ctx.request_context.lifespan_state
+        config = state["config"]
+        cache = state["cache"]
         cost_estimator = state["cost_estimator"]
 
         table_cfg = config.get_table(params.table)
@@ -139,28 +143,33 @@ def register(mcp: FastMCP) -> None:
             if meta:
                 sql = await _nl_to_sql(params.question, meta, table_cfg)
             else:
-                return json.dumps({
-                    "warning": "No metadata cached; run datalake_describe_table first.",
-                    "sql_generated": None,
-                })
+                return json.dumps(
+                    {
+                        "warning": "No metadata cached; run datalake_describe_table first.",
+                        "sql_generated": None,
+                    }
+                )
 
         estimate = cost_estimator.estimate(params.table, sql)
-        return json.dumps({
-            "sql_generated":            sql,
-            "recommended_engine":       estimate.recommended_engine,
-            "estimated_bytes":          estimate.estimated_bytes,
-            "estimated_bytes_human":    _human_bytes(estimate.estimated_bytes),
-            "estimated_files":          estimate.estimated_files,
-            "s3_get_requests":          estimate.s3_get_requests,
-            "athena_cost_usd":          round(estimate.athena_cost_usd, 6),
-            "s3_get_cost_usd":          round(estimate.s3_get_cost_usd, 6),
-            "total_cost_usd":           round(estimate.total_cost_usd, 6),
-            "confidence":               estimate.confidence,
-            "partition_filter_detected": estimate.partition_filter_detected,
-            "column_fraction":          round(estimate.column_filter_fraction, 3),
-            "warning":                  estimate.warning,
-            "will_block":               estimate.block,
-        }, indent=2)
+        return json.dumps(
+            {
+                "sql_generated": sql,
+                "recommended_engine": estimate.recommended_engine,
+                "estimated_bytes": estimate.estimated_bytes,
+                "estimated_bytes_human": _human_bytes(estimate.estimated_bytes),
+                "estimated_files": estimate.estimated_files,
+                "s3_get_requests": estimate.s3_get_requests,
+                "athena_cost_usd": round(estimate.athena_cost_usd, 6),
+                "s3_get_cost_usd": round(estimate.s3_get_cost_usd, 6),
+                "total_cost_usd": round(estimate.total_cost_usd, 6),
+                "confidence": estimate.confidence,
+                "partition_filter_detected": estimate.partition_filter_detected,
+                "column_fraction": round(estimate.column_filter_fraction, 3),
+                "warning": estimate.warning,
+                "will_block": estimate.block,
+            },
+            indent=2,
+        )
 
     # ──────────────────────────────────────────────────────────────────────────
 
@@ -189,11 +198,11 @@ def register(mcp: FastMCP) -> None:
         """
         from tools.describe_table import _scan_metadata
 
-        state        = ctx.request_context.lifespan_state
-        config       = state["config"]
-        cache        = state["cache"]
+        state = ctx.request_context.lifespan_state
+        config = state["config"]
+        cache = state["cache"]
         result_cache = state.get("result_cache")
-        engine       = state["duckdb_engine"]
+        engine = state["duckdb_engine"]
 
         table_cfg = config.get_table(params.table)
         if not table_cfg:
@@ -222,10 +231,10 @@ def register(mcp: FastMCP) -> None:
 
 # ─── Shared helper ────────────────────────────────────────────────────────────
 
+
 async def _nl_to_sql(question: str, meta, table_cfg) -> str:
     """Call Claude to convert a natural language question to SQL."""
     import anthropic
-    import asyncio
 
     schema_lines = "\n".join(f"  {c.name} {c.dtype}" for c in meta.columns)
     partition_info = ", ".join(p.name for p in meta.partition_columns) or "none"

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import sqlite3
-import time
 from datetime import datetime, timezone, timedelta
 
 import pytest
@@ -17,6 +16,7 @@ from catalog.result_cache import (
 
 
 # ── make_cache_key ─────────────────────────────────────────────────────────────
+
 
 class TestMakeCacheKey:
     def test_deterministic(self):
@@ -57,6 +57,7 @@ class TestMakeCacheKey:
 
 # ── Shared backend contract ────────────────────────────────────────────────────
 
+
 def _run_backend_tests(cache):
     """Exercise the full ResultCacheBackend contract on any backend instance."""
     key = make_cache_key("sales", "SELECT 1", 100)
@@ -65,7 +66,14 @@ def _run_backend_tests(cache):
     assert cache.get(key) is None
 
     # Hit after put
-    cache.put(key, "sales", "SELECT 1", "## Results\n| id |\n|---|\n| 1 |", 1, ttl_seconds=3600)
+    cache.put(
+        key,
+        "sales",
+        "SELECT 1",
+        "## Results\n| id |\n|---|\n| 1 |",
+        1,
+        ttl_seconds=3600,
+    )
     assert cache.get(key) == "## Results\n| id |\n|---|\n| 1 |"
 
     # Overwrite (INSERT OR REPLACE)
@@ -76,7 +84,7 @@ def _run_backend_tests(cache):
     key2 = make_cache_key("orders", "SELECT 2", 100)
     cache.put(key2, "orders", "SELECT 2", "## Orders", 5, ttl_seconds=3600)
     cache.invalidate_table("sales")
-    assert cache.get(key) is None      # gone
+    assert cache.get(key) is None  # gone
     assert cache.get(key2) == "## Orders"  # untouched
 
     # close does not raise
@@ -84,6 +92,7 @@ def _run_backend_tests(cache):
 
 
 # ── SQLite backend ─────────────────────────────────────────────────────────────
+
 
 class TestSQLiteResultCache:
     def test_basic_contract(self, tmp_path):
@@ -99,7 +108,9 @@ class TestSQLiteResultCache:
         # Back-date cached_at so the entry appears expired
         past = (datetime.now(tz=timezone.utc) - timedelta(seconds=10)).isoformat()
         con = sqlite3.connect(db_path)
-        con.execute("UPDATE query_results SET cached_at = ? WHERE cache_key = ?", (past, key))
+        con.execute(
+            "UPDATE query_results SET cached_at = ? WHERE cache_key = ?", (past, key)
+        )
         con.commit()
         con.close()
 
@@ -127,6 +138,7 @@ class TestSQLiteResultCache:
 
 # ── DuckDB backend ─────────────────────────────────────────────────────────────
 
+
 class TestDuckDBResultCache:
     def test_basic_contract(self, tmp_path):
         cache = DuckDBResultCache(str(tmp_path / "test.duckdb"), ttl_seconds=3600)
@@ -134,6 +146,7 @@ class TestDuckDBResultCache:
 
     def test_expired_entry_returns_none(self, tmp_path):
         import duckdb
+
         db_path = str(tmp_path / "ttl.duckdb")
         cache = DuckDBResultCache(db_path, ttl_seconds=3600)
         key = make_cache_key("t", "SELECT 1", 10)
@@ -143,7 +156,9 @@ class TestDuckDBResultCache:
         # Back-date cached_at so the entry appears expired
         past = (datetime.now(tz=timezone.utc) - timedelta(seconds=10)).isoformat()
         con = duckdb.connect(db_path)
-        con.execute("UPDATE query_results SET cached_at = ? WHERE cache_key = ?", [past, key])
+        con.execute(
+            "UPDATE query_results SET cached_at = ? WHERE cache_key = ?", [past, key]
+        )
         con.close()
 
         cache2 = DuckDBResultCache(db_path, ttl_seconds=3600)
@@ -170,6 +185,7 @@ class TestDuckDBResultCache:
 
 
 # ── Factory ────────────────────────────────────────────────────────────────────
+
 
 class TestMakeResultCache:
     def test_default_returns_sqlite(self, tmp_path):
@@ -207,6 +223,7 @@ class TestMakeResultCache:
 
     def test_redis_backend_raises_without_redis_py(self, tmp_path, monkeypatch):
         import builtins
+
         real_import = builtins.__import__
 
         def mock_import(name, *args, **kwargs):

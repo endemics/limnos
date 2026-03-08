@@ -9,9 +9,7 @@ Usage:
 
 import argparse
 import os
-import sys
 from contextlib import asynccontextmanager
-from pathlib import Path
 
 import structlog
 from mcp.server.fastmcp import FastMCP
@@ -21,12 +19,20 @@ from catalog.result_cache import make_result_cache
 from engine.duckdb_engine import DuckDBEngine
 from engine.athena_engine import AthenaEngine
 from engine.cost_estimator import CostEstimator
-from tools import list_datasets, describe_table, sample_data, estimate_query, query, refresh_schema
+from tools import (
+    list_datasets,
+    describe_table,
+    sample_data,
+    estimate_query,
+    query,
+    refresh_schema,
+)
 from config import load_config
 
 logger = structlog.get_logger()
 
 # ─── Lifespan ────────────────────────────────────────────────────────────────
+
 
 @asynccontextmanager
 async def app_lifespan(server: FastMCP):
@@ -54,11 +60,11 @@ async def app_lifespan(server: FastMCP):
     )
 
     yield {
-        "config":         cfg,
-        "cache":          cache,
-        "result_cache":   result_cache,
-        "duckdb_engine":  duckdb_engine,
-        "athena_engine":  athena_engine,
+        "config": cfg,
+        "cache": cache,
+        "result_cache": result_cache,
+        "duckdb_engine": duckdb_engine,
+        "athena_engine": athena_engine,
         "cost_estimator": cost_estimator,
     }
 
@@ -98,6 +104,7 @@ refresh_schema.register(mcp)
 
 
 # ─── CLI ──────────────────────────────────────────────────────────────────────
+
 
 def main():
     parser = argparse.ArgumentParser(description="Limnos MCP Server")

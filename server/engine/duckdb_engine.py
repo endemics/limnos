@@ -8,7 +8,7 @@ Columnar + predicate pushdown means only needed bytes are transferred.
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 import duckdb
@@ -24,11 +24,11 @@ class QueryResult:
     rows: List[Dict[str, Any]]
     columns: List[str]
     row_count: int
-    bytes_scanned: int          # -1 if not measurable
+    bytes_scanned: int  # -1 if not measurable
     duration_ms: int
     engine: str = "duckdb"
     sql_executed: str = ""
-    truncated: bool = False     # True if row_limit was applied
+    truncated: bool = False  # True if row_limit was applied
 
 
 class DuckDBEngine:
@@ -72,7 +72,7 @@ class DuckDBEngine:
     ) -> QueryResult:
         """Execute SQL and return structured results."""
         limit = row_limit or self.config.engine.default_row_limit
-        timeout = timeout_seconds or self.config.engine.query_timeout_seconds
+        _ = timeout_seconds or self.config.engine.query_timeout_seconds
 
         # Inject LIMIT if not already present
         final_sql = _inject_limit(sql, limit)
@@ -99,7 +99,7 @@ class DuckDBEngine:
             rows=rows,
             columns=cols,
             row_count=len(rows),
-            bytes_scanned=-1,   # DuckDB doesn't expose this directly yet
+            bytes_scanned=-1,  # DuckDB doesn't expose this directly yet
             duration_ms=elapsed_ms,
             engine="duckdb",
             sql_executed=final_sql,
@@ -124,7 +124,9 @@ class DuckDBEngine:
             )
             return [{"name": r[0], "type": r[1]} for r in rel.fetchall()]
         except duckdb.Error as e:
-            raise QueryError(f"Failed to read Parquet schema from {s3_path}: {e}") from e
+            raise QueryError(
+                f"Failed to read Parquet schema from {s3_path}: {e}"
+            ) from e
 
     def estimate_row_count(self, s3_path: str, fmt: str = "parquet") -> int:
         """Cheap row count estimate using Parquet footer metadata."""

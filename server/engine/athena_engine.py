@@ -11,7 +11,7 @@ import csv
 import io
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 import boto3
 import structlog
@@ -126,7 +126,9 @@ class AthenaEngine:
 
             time.sleep(POLL_INTERVAL_SECONDS)
 
-    def _fetch_results(self, execution_id: str) -> tuple[List[Dict[str, Any]], List[str]]:
+    def _fetch_results(
+        self, execution_id: str
+    ) -> tuple[List[Dict[str, Any]], List[str]]:
         """Download result CSV from S3 and parse into rows."""
         output_location = self.config.aws.athena_output_location.rstrip("/")
         bucket = output_location.removeprefix("s3://").split("/")[0]

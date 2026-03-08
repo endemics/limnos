@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from typing import Optional
 
 from mcp.server.fastmcp import FastMCP, Context
@@ -97,12 +96,12 @@ def register(mcp: FastMCP) -> None:
             str: Markdown response with query, cost metadata, and result table.
                  If blocked by cost gate, returns warning and generated SQL instead.
         """
-        state          = ctx.request_context.lifespan_state
-        config         = state["config"]
-        cache          = state["cache"]
-        result_cache   = state.get("result_cache")
-        duckdb_engine  = state["duckdb_engine"]
-        athena_engine  = state["athena_engine"]
+        state = ctx.request_context.lifespan_state
+        config = state["config"]
+        cache = state["cache"]
+        result_cache = state.get("result_cache")
+        duckdb_engine = state["duckdb_engine"]
+        athena_engine = state["athena_engine"]
         cost_estimator = state["cost_estimator"]
 
         table_cfg = config.get_table(params.table)
@@ -116,6 +115,7 @@ def register(mcp: FastMCP) -> None:
         if meta is None and config.cache.auto_refresh:
             await ctx.report_progress(0.05, "Refreshing schema cache...")
             from tools.describe_table import _scan_metadata
+
             meta = await _scan_metadata(table_cfg, duckdb_engine, cache)
 
         # ── Step 1: NL → SQL ────────────────────────────────────────────────
@@ -124,8 +124,11 @@ def register(mcp: FastMCP) -> None:
             sql = params.question.strip()
         else:
             await ctx.report_progress(0.2, "Generating SQL from your question...")
-            sql = await _nl_to_sql(params.question, meta, table_cfg) if meta \
+            sql = (
+                await _nl_to_sql(params.question, meta, table_cfg)
+                if meta
                 else _fallback_sql(params.question, table_cfg)
+            )
 
         # ── Step 2: Cost estimation ─────────────────────────────────────────
         estimate = cost_estimator.estimate(params.table, sql)
@@ -153,7 +156,10 @@ def register(mcp: FastMCP) -> None:
         skip_cache = (
             not config.cache.result_cache_enabled
             or params.force
-            or (estimate.confidence == "low" and config.cache.result_cache_skip_low_confidence)
+            or (
+                estimate.confidence == "low"
+                and config.cache.result_cache_skip_low_confidence
+            )
         )
         if result_cache and not skip_cache:
             cache_key = make_cache_key(params.table, sql, effective_row_limit)
@@ -163,7 +169,9 @@ def register(mcp: FastMCP) -> None:
                 return cached_response
 
         # ── Step 5: Execute ──────────────────────────────────────────────────
-        await ctx.report_progress(0.5, f"Running query via {estimate.recommended_engine}...")
+        await ctx.report_progress(
+            0.5, f"Running query via {estimate.recommended_engine}..."
+        )
 
         try:
             if estimate.recommended_engine == "duckdb":
@@ -205,10 +213,13 @@ def register(mcp: FastMCP) -> None:
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
+
 def _fallback_sql(question: str, table_cfg) -> str:
     """Last-resort SQL when no metadata is available — SELECT * with limit."""
     if table_cfg.format == "parquet":
-        source = f"read_parquet('{table_cfg.s3_path}**/*.parquet', hive_partitioning=true)"
+        source = (
+            f"read_parquet('{table_cfg.s3_path}**/*.parquet', hive_partitioning=true)"
+        )
     else:
         source = f"iceberg_scan('{table_cfg.s3_path}')"
     return f"-- Could not generate SQL from NL (no cached schema). Returning sample.\nSELECT * FROM {source} LIMIT 100"
