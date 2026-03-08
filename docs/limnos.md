@@ -17,14 +17,14 @@ An MCP (Model Context Protocol) server sitting in front of the data lake, backed
 ## 2. Architecture
 
 ```
-User (Claude Desktop / IDE)
-        │
-        ▼
-   MCP Client (Claude)
-        │  natural language
-        ▼
+        User (Claude Desktop / IDE)
+                  │
+                  ▼
+         MCP Client (Claude)
+                  │  natural language
+                  ▼
    ┌─────────────────────────────────────┐
-   │  Go Gateway (Phase 2 — multi-user)  │
+   │  Go Gateway (for multi-user)        │
    │  API key auth, per-user budgets,    │
    │  load balancing, health checks      │
    └──────────────┬──────────────────────┘
@@ -32,7 +32,7 @@ User (Claude Desktop / IDE)
         ┌─────────┴─────────┐
         │                   │
         ▼                   ▼
-   MCP Server          MCP Server      (worker pool)
+   MCP Server          MCP Server   (worker pool)
    ┌──────────────────────────────────────┐
    │  Tool Layer (FastMCP)                │
    │  datalake_list_datasets              │
@@ -51,7 +51,7 @@ User (Claude Desktop / IDE)
         │
         │ columnar reads (only needed columns + row groups)
         ▼
-   S3 (Parquet / Iceberg)
+   S3 (Parquet / Iceberg / flat files)
         │
         │  fallback for very large scans
         ▼
@@ -467,7 +467,6 @@ For most teams, **Docker on a small EC2 instance** (t3.medium, ~$30/mo) is the r
 - [x] Go gateway with API key auth and per-user query budgets
 - [x] Worker pool with health checks and auto-restart
 - [ ] Audit log to S3 / CloudWatch
-- [ ] Web UI for schema browsing (optional)
 
 ---
 
@@ -571,5 +570,3 @@ tables:
 | `config/config.example.yaml` | Add example CSV/NDJSON entries; add `glue_database` |
 
 ---
-
-*Last updated: March 2026*
