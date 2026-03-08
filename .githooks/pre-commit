@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Pre-commit hook: run make check before every commit.
+# Install with: make install-hooks
+
+set -euo pipefail
+
+echo "Running pre-commit checks (make check)..."
+make check

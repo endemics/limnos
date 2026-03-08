@@ -9,7 +9,7 @@
         run run-server run-gateway \
         docker-build docker-up docker-up-gateway docker-down \
         tidy download \
-        check ci dev-tools
+        check ci dev-tools install-hooks
 
 # ── Variables ──────────────────────────────────────────────────────────────────
 
@@ -194,7 +194,12 @@ check: fmt vet lint test ## Run all checks (format, vet, lint, test)
 ci: tidy check test-coverage ## Run CI pipeline (tidy, check, coverage)
 	@echo "CI checks complete!"
 
-dev-tools: ## Install Go development tools
+install-hooks: ## Install git hooks (runs make check before every commit)
+	@echo "Installing git hooks..."
+	git config core.hooksPath .githooks
+	@echo "Git hooks installed. Pre-commit hook will run 'make check'."
+
+dev-tools: install-hooks ## Install Go development tools and git hooks
 	@echo "Installing Go development tools..."
 	$(GOINSTALL) github.com/golangci/golangci-lint/cmd/golangci-lint@latest
 	$(GOINSTALL) golang.org/x/tools/cmd/goimports@latest
