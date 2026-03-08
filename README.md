@@ -89,6 +89,58 @@ See `gateway/README.md` for full setup.
 
 See `config/config.example.yaml` for all options.
 
+## Development
+
+### Prerequisites
+
+- Python 3.11+
+- Go 1.21+
+- [golangci-lint](https://golangci-lint.run/) (installed by `make dev-tools`)
+
+### First-time setup
+
+```bash
+# Install Go tools, Python dev dependencies, and the pre-commit hook
+make dev-tools
+pip install -r server/requirements.txt pytest pytest-cov ruff
+```
+
+### Common tasks
+
+| Command | Description |
+|---------|-------------|
+| `make test` | Run all tests (Go + Python) |
+| `make test-gateway` | Go tests only |
+| `make test-server` | Python tests only |
+| `make test-coverage` | Tests + coverage reports for both |
+| `make lint` | Lint Go (golangci-lint) + Python (ruff) |
+| `make fmt` | Format Go + Python |
+| `make check` | fmt + vet + lint + test (full quality gate) |
+| `make build` | Build the Go gateway binary |
+
+### Pre-commit hook
+
+`make dev-tools` (or `make install-hooks`) configures git to run `make check`
+before every commit, keeping lint and tests green locally:
+
+```bash
+make install-hooks   # one-time setup; re-run after cloning
+```
+
+To bypass in exceptional cases (e.g. a work-in-progress commit):
+
+```bash
+git commit --no-verify -m "wip: ..."
+```
+
+### CI
+
+GitHub Actions runs the same `make check` quality gate on every push and pull
+request to `main`, with coverage artifacts uploaded for each run:
+
+- **Python coverage** → `coverage-python.xml`
+- **Go coverage** → `coverage.txt` (view locally with `make test-coverage-html`)
+
 ## Project Structure
 
 ```
@@ -97,6 +149,7 @@ limnos/
 │   ├── main.py                # Entry point
 │   ├── catalog/
 │   │   ├── schema_cache.py    # SQLite-backed metadata cache
+│   │   ├── result_cache.py    # Query result cache (SQLite/DuckDB/Redis)
 │   │   ├── iceberg.py         # Iceberg metadata reader
 │   │   └── hive.py            # Hive partition discovery
 │   ├── engine/
@@ -110,15 +163,19 @@ limnos/
 │   │   ├── estimate_query.py
 │   │   ├── query.py
 │   │   └── refresh_schema.py
+│   ├── tests/                 # Python unit tests
 │   └── requirements.txt
 ├── gateway/                   # Phase 2: Go HTTP gateway
 │   ├── cmd/gateway/main.go
 │   └── internal/
+│       ├── auth/              # API key auth + budget enforcement
 │       ├── mcp/               # MCP protocol proxy
-│       ├── queue/             # Worker queue
-│       └── auth/              # Auth middleware
+│       └── queue/             # Worker pool + health checks
+├── .githooks/
+│   └── pre-commit             # Runs make check before every commit
+├── .github/workflows/
+│   └── ci.yml                 # CI: lint + test + coverage on push/PR
 ├── config/
 │   └── config.example.yaml
-├── tests/
-└── docs/
+└── Makefile
 ```
