@@ -89,6 +89,19 @@ See `gateway/README.md` for full setup.
 
 See `config/config.example.yaml` for all options.
 
+### Supported Table Formats
+
+| Format | Status | Notes |
+|--------|--------|-------|
+| `parquet` | ✅ Supported | Hive-style partitioning, columnar pruning |
+| `iceberg` | ✅ Supported | Direct S3 metadata, exact row counts |
+| `csv` | 🔜 Planned | Auto-detect schema; configurable delimiter |
+| `json` | 🔜 Planned | Records, array, or auto format |
+| `ndjson` | 🔜 Planned | Newline-delimited JSON (log files) |
+| `txt` | 🔜 Planned | Single-column `line VARCHAR` |
+
+> **Flat file formats (CSV, JSON, NDJSON, TXT)** are planned. Schema is detected once on first `describe_table` and cached — subsequent queries use the SQLite cache with no re-scanning. A one-time 10k-row sample is used to estimate rows-per-byte for cost prediction. See [docs/limnos.md](docs/limnos.md) for the full design.
+
 ## Development
 
 ### Prerequisites

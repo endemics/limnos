@@ -24,9 +24,9 @@ User (Claude Desktop / IDE)
         │  natural language
         ▼
    ┌─────────────────────────────────────┐
-   │  Go Gateway (Phase 2 — multi-user) │
-   │  API key auth, per-user budgets,   │
-   │  load balancing, health checks     │
+   │  Go Gateway (Phase 2 — multi-user)  │
+   │  API key auth, per-user budgets,    │
+   │  load balancing, health checks      │
    └──────────────┬──────────────────────┘
                   │ HTTP proxy
         ┌─────────┴─────────┐
@@ -98,8 +98,11 @@ limnos/
 │   │   └── cost_estimator.py    # Pre-query cost estimation
 │   ├── catalog/
 │   │   ├── schema_cache.py      # SQLite-backed schema/partition cache
+│   │   ├── result_cache.py      # Query result cache (SQLite / DuckDB / Redis backends)
 │   │   ├── iceberg.py           # Direct S3 Iceberg metadata reader
 │   │   └── hive.py              # Hive-style partition discovery
+│   ├── tests/
+│   │   └── test_result_cache.py # Unit tests for result cache backends
 │   └── tools/
 │       ├── list_datasets.py     # datalake_list_datasets
 │       ├── describe_table.py    # datalake_describe_table
@@ -136,13 +139,16 @@ async def app_lifespan(server: FastMCP):
         "duckdb_engine":  DuckDBEngine(cfg),
         "athena_engine":  AthenaEngine(cfg),
         "cost_estimator": CostEstimator(cfg, cache),
+        "result_cache":   make_result_cache(...),
     }
 
 mcp = FastMCP("limnos", lifespan=app_lifespan)
 
 list_datasets.register(mcp)
 describe_table.register(mcp)
-sample_data.register(mcp)    # also registers estimate_query and refresh_schema
+sample_data.register(mcp)
+estimate_query.register(mcp)
+refresh_schema.register(mcp)
 query.register(mcp)
 
 # Usage:
@@ -214,7 +220,8 @@ class CostEstimator:
 
 @dataclass
 class TableMeta:
-    name: str
+    table_name: str
+    s3_path: str
     format: str                          # "parquet" or "iceberg"
     columns: list[ColumnMeta]
     partition_columns: list[PartitionColumnMeta]
@@ -223,12 +230,15 @@ class TableMeta:
     total_bytes: int
     total_partitions: int
     size_human: str
-    freshness_hours: float
+    description: str
+    freshness_hours: float               # property derived from last_refreshed
     last_refreshed: datetime
 
 class SchemaCache:
     def get(self, table_name: str) -> Optional[TableMeta]: ...
     def put(self, meta: TableMeta) -> None: ...
+    def list_tables(self) -> list[str]: ...
+    def delete(self, table_name: str) -> None: ...
     def close(self) -> None: ...
 ```
 
@@ -439,8 +449,9 @@ For most teams, **Docker on a small EC2 instance** (t3.medium, ~$30/mo) is the r
 ### Phase 3 — Production Hardening ✅ (partial)
 - [x] Athena fallback for large scans
 - [x] Iceberg metadata integration (direct S3 reads)
+- [x] Query result cache (SQLite / DuckDB / Redis backends)
 - [ ] Schema auto-refresh (EventBridge cron)
-- [ ] Query result cache (Redis or DuckDB persistent)
+- [ ] Flat file formats (CSV, JSON, NDJSON, TXT) — see Section 11
 
 ### Phase 4 — Multi-user / Team ✅ (partial)
 - [x] MCP over HTTP/SSE transport (streamable HTTP)
@@ -462,6 +473,84 @@ For most teams, **Docker on a small EC2 instance** (t3.medium, ~$30/mo) is the r
 | **Accuracy of estimates** | High when metadata is fresh; low for infrequently-refreshed tables |
 | **Security** | Read-only IAM scope; no data leaves S3 region |
 | **Operational burden** | Minimal — one Python process (stdio) or Go gateway + worker pool (HTTP) |
+
+---
+
+---
+
+## 11. Planned: Flat File Format Support (CSV, JSON, NDJSON, TXT)
+
+Many data lakes contain raw flat files alongside Parquet/Iceberg tables — CSVs exported from operational systems, JSON API dumps, NDJSON log streams, and plain-text files. DuckDB natively reads all of these, so adding support is primarily plumbing across the existing format-dispatch points.
+
+### 11.1 DuckDB Table Source per Format
+
+| Format | DuckDB SQL source |
+|--------|-------------------|
+| `csv`  | `read_csv('s3://…/**/*.csv', hive_partitioning=true, auto_detect=true, delim=',')` |
+| `json` | `read_json('s3://…/**/*.json', format='auto')` |
+| `ndjson` | `read_json('s3://…/**/*.ndjson', format='newline_delimited')` |
+| `txt`  | `read_csv('s3://…/**/*.txt', sep='\n', header=false, columns={'line': 'VARCHAR'})` |
+
+### 11.2 Schema Detection & Caching Strategy
+
+Unlike Parquet (which exposes schema in the file footer at zero read cost), flat files must be partially read to determine column names and types. To avoid re-reading on every query, schema detection runs **once** during the first `datalake_describe_table` call and stores results in the existing SQLite schema cache:
+
+1. **Schema detection** — DuckDB's `DESCRIBE SELECT * FROM read_csv/read_json(…) LIMIT 0` reads only the file header or first JSON object. Result stored in `TableMeta.columns`.
+2. **Bytes-per-row sample** — A `SELECT COUNT(*) … LIMIT 10000` scan estimates average row size. Stored as `TableMeta.bytes_per_row_estimate` (new field). Used by the cost estimator to derive `estimated_rows ≈ total_bytes / bytes_per_row_estimate` without re-reading files.
+3. **File inventory** — `discover_partitions()` in `catalog/hive.py` (already format-agnostic) provides file count and total bytes.
+
+All subsequent `datalake_query`, `datalake_estimate_query`, and `datalake_sample_data` calls read only from the SQLite cache — no S3 file access for metadata.
+
+### 11.3 Configuration Changes (`server/config.py`)
+
+New optional fields on `TableConfig`:
+
+```yaml
+tables:
+  - name: orders_csv
+    s3_path: "s3://my-bucket/exports/orders/"
+    format: csv
+    delimiter: ","          # optional, default ","
+    has_header: true         # optional, default true
+
+  - name: events_ndjson
+    s3_path: "s3://my-bucket/logs/events/"
+    format: ndjson
+
+  - name: api_responses
+    s3_path: "s3://my-bucket/api/responses/"
+    format: json
+    json_format: "records"   # "records" | "array" | "auto"
+
+  - name: audit_log
+    s3_path: "s3://my-bucket/audit/"
+    format: txt
+```
+
+### 11.4 Limitations vs Parquet/Iceberg
+
+| Limitation | Detail |
+|---|---|
+| **No columnar pruning** | Entire file is read even for single-column queries; `column_filter_fraction` is always `1.0` |
+| **Row count is estimated** | Derived from `total_bytes / bytes_per_row_estimate` after a one-time 10k-row sample; not exact |
+| **No Athena fallback** | Athena requires a Glue table definition to query raw CSV/JSON; these formats stay DuckDB-only |
+| **Schema detection reads data** | First `describe_table` call reads file content (header + 10k rows); subsequent calls are cache-only |
+| **Cost estimate confidence** | Always `"medium"` at best — no row-group statistics available |
+| **Partition pushdown** | Hive-style path partitioning (`col=value/`) works for CSV; JSON/NDJSON files rarely use it |
+
+### 11.5 Files to Modify
+
+| File | Change |
+|---|---|
+| `server/config.py` | Add `csv`, `json`, `ndjson`, `txt` to format validator; add `delimiter`, `has_header`, `json_format`, `glob_pattern` fields |
+| `server/engine/duckdb_engine.py` | Add `get_flat_file_schema(s3_path, fmt, **opts)` → `(columns, bytes_per_row)`; update `estimate_row_count()` |
+| `server/catalog/schema_cache.py` | Add `bytes_per_row_estimate: Optional[float]` to `TableMeta`; add column to SQLite schema |
+| `server/tools/describe_table.py` | Add format branches for CSV/JSON/NDJSON/TXT in `_scan_metadata()` |
+| `server/tools/sample_data.py` | Add SQL source strings for each new format |
+| `server/tools/query.py` | Update `NL_TO_SQL_SYSTEM` prompt and `_fallback_sql()` with new format references |
+| `server/engine/cost_estimator.py` | Set `column_filter_fraction=1.0`; add flat-file warning; skip Athena recommendation |
+| `server/tests/` | Unit tests for `get_flat_file_schema()` and cost estimate behaviour |
+| `config/config.example.yaml` | Add example CSV/NDJSON table entries |
 
 ---
 
