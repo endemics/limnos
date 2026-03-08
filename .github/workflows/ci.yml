@@ -22,10 +22,17 @@ jobs:
           cache-dependency-path: server/requirements.txt
 
       - name: Install dependencies
-        run: pip install -r server/requirements.txt pytest
+        run: pip install -r server/requirements.txt pytest pytest-cov
 
-      - name: Run Python tests
-        run: make test-server
+      - name: Run Python tests with coverage
+        run: make test-coverage-server
+
+      - name: Upload Python coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-coverage
+          path: coverage-python.xml
+          if-no-files-found: ignore
 
   test-gateway:
     name: Go tests
@@ -40,5 +47,12 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Run Go tests
-        run: make test-gateway
+      - name: Run Go tests with coverage
+        run: make test-coverage-gateway
+
+      - name: Upload Go coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-coverage
+          path: coverage.txt
+          if-no-files-found: ignore

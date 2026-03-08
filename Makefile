@@ -84,13 +84,20 @@ test-server: ## Run Python server tests
 	@echo "Running Python tests..."
 	$(PYTHON) -m pytest server/ -v; ret=$$?; [ $$ret -eq 5 ] && exit 0 || exit $$ret
 
-test-coverage: ## Run Go tests with coverage report
-	@echo "Running tests with coverage..."
+test-coverage: test-coverage-gateway test-coverage-server ## Run coverage for all components
+
+test-coverage-gateway: ## Run Go tests with coverage report
+	@echo "Running Go tests with coverage..."
 	$(GOTEST) -v -race -coverprofile=$(COVERAGE_FILE) -covermode=atomic ./gateway/...
 	@echo "Coverage report: $(COVERAGE_FILE)"
 	@echo "View with: go tool cover -html=$(COVERAGE_FILE)"
 
-test-coverage-html: test-coverage ## Run tests with coverage and open HTML report
+test-coverage-server: ## Run Python tests with coverage report
+	@echo "Running Python tests with coverage..."
+	$(PYTHON) -m pytest server/ -v --cov=server --cov-report=term-missing --cov-report=xml:coverage-python.xml; \
+	ret=$$?; [ $$ret -eq 5 ] && exit 0 || exit $$ret
+
+test-coverage-html: test-coverage-gateway ## Open Go coverage as HTML report
 	$(GOCMD) tool cover -html=$(COVERAGE_FILE)
 
 # ── Lint / Format / Vet ────────────────────────────────────────────────────────
@@ -175,9 +182,9 @@ pip-install: ## Install Python dependencies
 	@echo "Installing Python dependencies..."
 	$(PIP) install -r server/requirements.txt
 
-pip-install-dev: ## Install Python dev dependencies (pytest, ruff, etc.)
+pip-install-dev: ## Install Python dev dependencies (pytest, pytest-cov, ruff, etc.)
 	@echo "Installing Python dev dependencies..."
-	$(PIP) install -r server/requirements.txt pytest ruff
+	$(PIP) install -r server/requirements.txt pytest pytest-cov ruff
 
 # ── Quality gates ──────────────────────────────────────────────────────────────
 
