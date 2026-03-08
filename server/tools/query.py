@@ -8,6 +8,7 @@ from typing import Optional
 from mcp.server.fastmcp import FastMCP, Context
 from pydantic import BaseModel, ConfigDict, Field
 
+from catalog.result_cache import make_cache_key
 from engine.duckdb_engine import QueryError
 from tools import format_query_result
 from tools.sample_data import _nl_to_sql
@@ -99,6 +100,7 @@ def register(mcp: FastMCP) -> None:
         state          = ctx.request_context.lifespan_state
         config         = state["config"]
         cache          = state["cache"]
+        result_cache   = state.get("result_cache")
         duckdb_engine  = state["duckdb_engine"]
         athena_engine  = state["athena_engine"]
         cost_estimator = state["cost_estimator"]
@@ -145,7 +147,22 @@ def register(mcp: FastMCP) -> None:
             # Soft warning — still execute, but surface the warning
             await ctx.log_info(f"Cost warning: {estimate.warning}")
 
-        # ── Step 4: Execute ──────────────────────────────────────────────────
+        # ── Step 4: Result cache check ───────────────────────────────────────
+        effective_row_limit = params.row_limit or config.engine.default_row_limit
+        cache_key = None
+        skip_cache = (
+            not config.cache.result_cache_enabled
+            or params.force
+            or (estimate.confidence == "low" and config.cache.result_cache_skip_low_confidence)
+        )
+        if result_cache and not skip_cache:
+            cache_key = make_cache_key(params.table, sql, effective_row_limit)
+            cached_response = result_cache.get(cache_key)
+            if cached_response is not None:
+                await ctx.log_info("cache_hit", table=params.table)
+                return cached_response
+
+        # ── Step 5: Execute ──────────────────────────────────────────────────
         await ctx.report_progress(0.5, f"Running query via {estimate.recommended_engine}...")
 
         try:
@@ -166,11 +183,22 @@ def register(mcp: FastMCP) -> None:
 
         await ctx.report_progress(1.0, "Done")
 
-        # ── Step 5: Format & return ──────────────────────────────────────────
+        # ── Step 6: Format & return ──────────────────────────────────────────
         response = format_query_result(result, estimate.summary_line())
 
         if estimate.warning:
             response = f"⚠️ {estimate.warning}\n\n{response}"
+
+        # Store in result cache (skip on errors — we only reach here on success)
+        if result_cache and cache_key and not skip_cache:
+            result_cache.put(
+                key=cache_key,
+                table_name=params.table,
+                sql_executed=result.sql_executed,
+                response=response,
+                row_count=result.row_count,
+                ttl_seconds=config.cache.result_cache_ttl_seconds,
+            )
 
         return response
 

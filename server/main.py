@@ -17,6 +17,7 @@ import structlog
 from mcp.server.fastmcp import FastMCP
 
 from catalog.schema_cache import SchemaCache
+from catalog.result_cache import make_result_cache
 from engine.duckdb_engine import DuckDBEngine
 from engine.athena_engine import AthenaEngine
 from engine.cost_estimator import CostEstimator
@@ -44,10 +45,18 @@ async def app_lifespan(server: FastMCP):
     duckdb_engine = DuckDBEngine(cfg)
     athena_engine = AthenaEngine(cfg)
     cost_estimator = CostEstimator(cfg, cache)
+    result_cache = make_result_cache(
+        backend=cfg.cache.result_cache_backend,
+        db_path=cfg.cache.db_path,
+        result_cache_db_path=cfg.cache.result_cache_db_path,
+        redis_url=cfg.cache.redis_url,
+        ttl_seconds=cfg.cache.result_cache_ttl_seconds,
+    )
 
     yield {
         "config":         cfg,
         "cache":          cache,
+        "result_cache":   result_cache,
         "duckdb_engine":  duckdb_engine,
         "athena_engine":  athena_engine,
         "cost_estimator": cost_estimator,
@@ -55,6 +64,7 @@ async def app_lifespan(server: FastMCP):
 
     duckdb_engine.close()
     cache.close()
+    result_cache.close()
     logger.info("s3_mcp_stopped")
 
 

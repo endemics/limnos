@@ -56,6 +56,13 @@ class CacheConfig(BaseModel):
     db_path: str = "/tmp/s3_mcp_schema_cache.db"
     stale_threshold_hours: float = 24.0
     auto_refresh: bool = True
+    # ── Query result cache ────────────────────────────────────────────────────
+    result_cache_enabled: bool = True
+    result_cache_ttl_seconds: int = 3600                            # 1 hour
+    result_cache_backend: str = "sqlite"                            # sqlite | duckdb | redis
+    result_cache_db_path: str = "/tmp/limnos_result_cache.duckdb"  # duckdb backend only
+    redis_url: str = "redis://localhost:6379"                       # redis backend only
+    result_cache_skip_low_confidence: bool = True                   # set False for JSON/CSV
 
 
 class CostGatesConfig(BaseModel):

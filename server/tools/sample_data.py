@@ -189,10 +189,11 @@ def register(mcp: FastMCP) -> None:
         """
         from tools.describe_table import _scan_metadata
 
-        state  = ctx.request_context.lifespan_state
-        config = state["config"]
-        cache  = state["cache"]
-        engine = state["duckdb_engine"]
+        state        = ctx.request_context.lifespan_state
+        config       = state["config"]
+        cache        = state["cache"]
+        result_cache = state.get("result_cache")
+        engine       = state["duckdb_engine"]
 
         table_cfg = config.get_table(params.table)
         if not table_cfg:
@@ -200,6 +201,11 @@ def register(mcp: FastMCP) -> None:
 
         await ctx.report_progress(0.1, f"Scanning S3 metadata for '{params.table}'...")
         meta = await _scan_metadata(table_cfg, engine, cache)
+
+        # Invalidate cached query results — schema changed, old results may be stale
+        if result_cache:
+            result_cache.invalidate_table(params.table)
+
         await ctx.report_progress(1.0, "Done")
 
         return (

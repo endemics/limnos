@@ -48,13 +48,37 @@ engine:
   # Query timeout in seconds
   query_timeout_seconds: 120
 
-# Schema cache settings
+# Schema cache + query result cache settings
 cache:
   db_path: "/tmp/s3_mcp_schema_cache.db"
   # How old (hours) before metadata is considered stale
   stale_threshold_hours: 24
   # Auto-refresh stale tables on first query (adds latency)
   auto_refresh: true
+
+  # ── Query result cache ──────────────────────────────────────────────────────
+  # Caches formatted query responses so repeated identical queries are served
+  # instantly without re-hitting S3/Athena.
+  result_cache_enabled: true
+  result_cache_ttl_seconds: 3600   # 1 hour; set lower for frequently-updated tables
+
+  # Backend options:
+  #   sqlite  — zero infra, single-machine, survives reboots (default)
+  #   duckdb  — zero infra, single-machine, compact columnar storage
+  #   redis   — shared across all workers on all machines (recommended for multi-node)
+  #             point redis_url at ElastiCache for production scale
+  result_cache_backend: sqlite
+
+  # Only used when result_cache_backend is "duckdb"
+  result_cache_db_path: "/tmp/limnos_result_cache.duckdb"
+
+  # Only used when result_cache_backend is "redis"
+  redis_url: "redis://localhost:6379"
+
+  # Skip caching when cost estimator confidence is "low" (stale schema metadata).
+  # Set to false for JSON/CSV tables that always have low confidence but still
+  # benefit heavily from caching (every scan is a full file read).
+  result_cache_skip_low_confidence: true
 
 # Cost thresholds (USD)
 # Queries estimated above these values will warn before running
