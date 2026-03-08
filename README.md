@@ -100,7 +100,7 @@ See `config/config.example.yaml` for all options.
 | `ndjson` | 🔜 Planned | Newline-delimited JSON (log files) |
 | `txt` | 🔜 Planned | Single-column `line VARCHAR` |
 
-> **Flat file formats (CSV, JSON, NDJSON, TXT)** are planned. Schema is detected once on first `describe_table` and cached — subsequent queries use the SQLite cache with no re-scanning. A one-time 10k-row sample is used to estimate rows-per-byte for cost prediction. See [docs/limnos.md](docs/limnos.md) for the full design.
+> **Flat file formats (CSV, JSON, NDJSON, TXT)** are planned. Schema is detected once on first `describe_table` and cached — subsequent queries use the SQLite cache with no re-scanning. A one-time 10k-row sample estimates rows-per-byte for cost prediction. Athena fallback is supported via auto-provisioned Glue external tables. See [docs/limnos.md § 11](docs/limnos.md#11-planned-flat-file-format-support-csv-json-ndjson-txt) and [docs/flat-file-formats.md](docs/flat-file-formats.md) for the full design.
 
 ## Development
 

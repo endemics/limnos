@@ -401,10 +401,19 @@ The MCP server needs a tightly-scoped IAM role:
       "Effect": "Allow",
       "Action": ["glue:GetTable", "glue:GetDatabase", "glue:GetPartitions"],
       "Resource": "*"
+    },
+    {
+      "Sid": "GlueTableProvision",
+      "Effect": "Allow",
+      "Action": ["glue:CreateTable", "glue:UpdateTable"],
+      "Resource": "arn:aws:glue:*:*:table/your-database/*",
+      "Condition": {"StringEquals": {"glue:resourceTag/ManagedBy": "limnos"}}
     }
   ]
 }
 ```
+
+> **Note:** `GlueTableProvision` is only needed when using flat file formats (CSV/JSON/NDJSON/TXT). The `ManagedBy` condition limits scope to tables tagged by Limnos. For Parquet/Iceberg-only deployments this statement can be omitted.
 
 Additional recommendations:
 - Run the MCP server as an ECS task or local process using an **instance profile** — no long-lived credentials
@@ -480,6 +489,8 @@ For most teams, **Docker on a small EC2 instance** (t3.medium, ~$30/mo) is the r
 
 ## 11. Planned: Flat File Format Support (CSV, JSON, NDJSON, TXT)
 
+> See [docs/flat-file-formats.md](flat-file-formats.md) for the full implementation specification.
+
 Many data lakes contain raw flat files alongside Parquet/Iceberg tables — CSVs exported from operational systems, JSON API dumps, NDJSON log streams, and plain-text files. DuckDB natively reads all of these, so adding support is primarily plumbing across the existing format-dispatch points.
 
 ### 11.1 DuckDB Table Source per Format
@@ -501,7 +512,13 @@ Unlike Parquet (which exposes schema in the file footer at zero read cost), flat
 
 All subsequent `datalake_query`, `datalake_estimate_query`, and `datalake_sample_data` calls read only from the SQLite cache — no S3 file access for metadata.
 
-### 11.3 Configuration Changes (`server/config.py`)
+### 11.3a Athena Fallback via Glue Auto-Provisioning
+
+Athena CAN query flat files — it just needs a Glue external table definition. Since schema detection (Section 11.2) already produces column names, types, and partition columns from `ColumnMeta` objects (which already store Hive-compatible type strings), a new `GlueProvisioner` class in `server/catalog/glue.py` can create or update a Glue table at the end of `_scan_metadata()`. This is idempotent and runs only on `describe_table` — not on every query.
+
+The correct SerDe is selected by format (`LazySimpleSerDe` for CSV/TXT, `openx.JsonSerDe` for JSON/NDJSON). After provisioning, Athena queries flat files exactly as it does Parquet. Requires `glue:CreateTable` and `glue:UpdateTable` IAM permissions (see Section 7).
+
+### 11.3b Configuration Changes (`server/config.py`)
 
 New optional fields on `TableConfig`:
 
@@ -533,7 +550,7 @@ tables:
 |---|---|
 | **No columnar pruning** | Entire file is read even for single-column queries; `column_filter_fraction` is always `1.0` |
 | **Row count is estimated** | Derived from `total_bytes / bytes_per_row_estimate` after a one-time 10k-row sample; not exact |
-| **No Athena fallback** | Athena requires a Glue table definition to query raw CSV/JSON; these formats stay DuckDB-only |
+| **Glue required for Athena** | Glue external table auto-provisioned during first `describe_table`; requires `glue:CreateTable`/`glue:UpdateTable` IAM — see Section 7 |
 | **Schema detection reads data** | First `describe_table` call reads file content (header + 10k rows); subsequent calls are cache-only |
 | **Cost estimate confidence** | Always `"medium"` at best — no row-group statistics available |
 | **Partition pushdown** | Hive-style path partitioning (`col=value/`) works for CSV; JSON/NDJSON files rarely use it |
@@ -542,15 +559,16 @@ tables:
 
 | File | Change |
 |---|---|
-| `server/config.py` | Add `csv`, `json`, `ndjson`, `txt` to format validator; add `delimiter`, `has_header`, `json_format`, `glob_pattern` fields |
+| `server/config.py` | Add `csv`, `json`, `ndjson`, `txt` to format validator; add `delimiter`, `has_header`, `json_format`, `glob_pattern` on `TableConfig`; add `glue_database` to `AWSConfig` |
 | `server/engine/duckdb_engine.py` | Add `get_flat_file_schema(s3_path, fmt, **opts)` → `(columns, bytes_per_row)`; update `estimate_row_count()` |
 | `server/catalog/schema_cache.py` | Add `bytes_per_row_estimate: Optional[float]` to `TableMeta`; add column to SQLite schema |
-| `server/tools/describe_table.py` | Add format branches for CSV/JSON/NDJSON/TXT in `_scan_metadata()` |
+| `server/catalog/glue.py` | **New** — `GlueProvisioner.sync_table()` (create/update Glue external table) |
+| `server/tools/describe_table.py` | Add format branches for CSV/JSON/NDJSON/TXT; call `GlueProvisioner.sync_table()` |
 | `server/tools/sample_data.py` | Add SQL source strings for each new format |
 | `server/tools/query.py` | Update `NL_TO_SQL_SYSTEM` prompt and `_fallback_sql()` with new format references |
-| `server/engine/cost_estimator.py` | Set `column_filter_fraction=1.0`; add flat-file warning; skip Athena recommendation |
-| `server/tests/` | Unit tests for `get_flat_file_schema()` and cost estimate behaviour |
-| `config/config.example.yaml` | Add example CSV/NDJSON table entries |
+| `server/engine/cost_estimator.py` | Set `column_filter_fraction=1.0`; derive row count from `bytes_per_row_estimate` |
+| `server/tests/` | Unit tests for `get_flat_file_schema()`, `GlueProvisioner` (mocked boto3), cost estimation |
+| `config/config.example.yaml` | Add example CSV/NDJSON entries; add `glue_database` |
 
 ---
 
