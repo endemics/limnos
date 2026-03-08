@@ -27,6 +27,7 @@ from typing import Optional
 
 # ── Cache key ─────────────────────────────────────────────────────────────────
 
+
 def make_cache_key(table: str, sql: str, row_limit: int) -> str:
     """Stable SHA-256 key from (table, normalised SQL, row_limit)."""
     normalized = re.sub(r"\s+", " ", sql.strip().rstrip(";").lower())
@@ -35,6 +36,7 @@ def make_cache_key(table: str, sql: str, row_limit: int) -> str:
 
 
 # ── Abstract interface ─────────────────────────────────────────────────────────
+
 
 class ResultCacheBackend(ABC):
     @abstractmethod
@@ -97,7 +99,9 @@ class SQLiteResultCache(ResultCacheBackend):
             return None
         response, cached_at_str, ttl = row
         cached_at = datetime.fromisoformat(cached_at_str)
-        age = (datetime.now(tz=timezone.utc) - cached_at.replace(tzinfo=timezone.utc)).total_seconds()
+        age = (
+            datetime.now(tz=timezone.utc) - cached_at.replace(tzinfo=timezone.utc)
+        ).total_seconds()
         if age > ttl:
             self._con.execute("DELETE FROM query_results WHERE cache_key = ?", (key,))
             self._con.commit()
@@ -117,7 +121,9 @@ class SQLiteResultCache(ResultCacheBackend):
         self._con.commit()
 
     def invalidate_table(self, table_name: str) -> None:
-        self._con.execute("DELETE FROM query_results WHERE table_name = ?", (table_name,))
+        self._con.execute(
+            "DELETE FROM query_results WHERE table_name = ?", (table_name,)
+        )
         self._con.commit()
 
     def close(self) -> None:
@@ -145,6 +151,7 @@ class DuckDBResultCache(ResultCacheBackend):
 
     def __init__(self, db_path: str, ttl_seconds: int = 3600):
         import duckdb  # already a project dependency
+
         self._ttl = ttl_seconds
         self._con = duckdb.connect(db_path)
         self._con.execute(_DUCKDB_SCHEMA)
@@ -158,7 +165,9 @@ class DuckDBResultCache(ResultCacheBackend):
             return None
         response, cached_at_str, ttl = row
         cached_at = datetime.fromisoformat(cached_at_str)
-        age = (datetime.now(tz=timezone.utc) - cached_at.replace(tzinfo=timezone.utc)).total_seconds()
+        age = (
+            datetime.now(tz=timezone.utc) - cached_at.replace(tzinfo=timezone.utc)
+        ).total_seconds()
         if age > ttl:
             self._con.execute("DELETE FROM query_results WHERE cache_key = ?", [key])
             return None
@@ -176,13 +185,16 @@ class DuckDBResultCache(ResultCacheBackend):
         )
 
     def invalidate_table(self, table_name: str) -> None:
-        self._con.execute("DELETE FROM query_results WHERE table_name = ?", [table_name])
+        self._con.execute(
+            "DELETE FROM query_results WHERE table_name = ?", [table_name]
+        )
 
     def close(self) -> None:
         self._con.close()
 
 
 # ── Redis backend ──────────────────────────────────────────────────────────────
+
 
 class RedisResultCache(ResultCacheBackend):
     """
@@ -218,7 +230,9 @@ class RedisResultCache(ResultCacheBackend):
         return json.loads(raw)["response"]
 
     def put(self, key, table_name, sql_executed, response, row_count, ttl_seconds):
-        payload = json.dumps({"response": response, "row_count": row_count, "sql_executed": sql_executed})
+        payload = json.dumps(
+            {"response": response, "row_count": row_count, "sql_executed": sql_executed}
+        )
         rk = self._result_key(key)
         self._client.set(rk, payload, ex=ttl_seconds)
         # Track key under table set (set TTL slightly longer so it outlives the result)
@@ -238,6 +252,7 @@ class RedisResultCache(ResultCacheBackend):
 
 
 # ── Factory ────────────────────────────────────────────────────────────────────
+
 
 def make_result_cache(
     backend: str,

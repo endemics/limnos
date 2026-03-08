@@ -26,29 +26,31 @@ from config import Config
 logger = structlog.get_logger()
 
 # AWS pricing constants (us-east-1, as of 2025)
-ATHENA_PRICE_PER_TB_USD   = 5.00
-ATHENA_MIN_BYTES          = 10 * 1024 * 1024     # 10 MB minimum per query
+ATHENA_PRICE_PER_TB_USD = 5.00
+ATHENA_MIN_BYTES = 10 * 1024 * 1024  # 10 MB minimum per query
 S3_GET_PRICE_PER_1000_USD = 0.0004
-S3_STORAGE_PRICE_PER_GB   = 0.023               # Standard storage / month
+S3_STORAGE_PRICE_PER_GB = 0.023  # Standard storage / month
 
 
 @dataclass
 class CostEstimate:
-    recommended_engine: str              # "duckdb" or "athena"
-    estimated_bytes: int                 # Bytes DuckDB/Athena would scan
-    estimated_files: int                 # S3 files touched
+    recommended_engine: str  # "duckdb" or "athena"
+    estimated_bytes: int  # Bytes DuckDB/Athena would scan
+    estimated_files: int  # S3 files touched
     s3_get_requests: int
     athena_cost_usd: float
     s3_get_cost_usd: float
     total_cost_usd: float
-    confidence: str                      # "high" | "medium" | "low"
+    confidence: str  # "high" | "medium" | "low"
     partition_filter_detected: bool
-    column_filter_fraction: float        # 0.0–1.0
+    column_filter_fraction: float  # 0.0–1.0
     warning: Optional[str] = None
-    block: bool = False                  # True if above block_threshold
+    block: bool = False  # True if above block_threshold
 
     def summary_line(self) -> str:
-        engine_label = f"{'🦆 DuckDB' if self.recommended_engine == 'duckdb' else '☁️  Athena'}"
+        engine_label = (
+            f"{'🦆 DuckDB' if self.recommended_engine == 'duckdb' else '☁️  Athena'}"
+        )
         size_label = _human_bytes(self.estimated_bytes)
         return (
             f"{engine_label} | ~{size_label} scan | "
@@ -72,7 +74,13 @@ class CostEstimator:
         if meta is None:
             return self._unknown_estimate(table_name)
 
-        confidence = "high" if meta.freshness_hours < 24 else "medium" if meta.freshness_hours < 72 else "low"
+        confidence = (
+            "high"
+            if meta.freshness_hours < 24
+            else "medium"
+            if meta.freshness_hours < 72
+            else "low"
+        )
 
         # ── Column pruning ──────────────────────────────────────────────────
         selected_cols = _extract_selected_columns(sql)
@@ -101,10 +109,12 @@ class CostEstimator:
         recommended = "duckdb" if estimated_bytes <= max_duckdb else "athena"
 
         # For DuckDB path, S3 GET is the real cost (no per-TB charge)
-        total_cost = s3_get_cost if recommended == "duckdb" else athena_cost + s3_get_cost
+        total_cost = (
+            s3_get_cost if recommended == "duckdb" else athena_cost + s3_get_cost
+        )
 
         # ── Warning / block gates ────────────────────────────────────────────
-        warn_thresh  = self.config.cost_gates.warn_threshold_usd
+        warn_thresh = self.config.cost_gates.warn_threshold_usd
         block_thresh = self.config.cost_gates.block_threshold_usd
         warning = None
         block = False
@@ -170,6 +180,7 @@ class CostEstimator:
 
 
 # ─── SQL parsing helpers ──────────────────────────────────────────────────────
+
 
 def _extract_selected_columns(sql: str) -> List[str]:
     """Return list of column names referenced in SELECT clause, or ['*']."""

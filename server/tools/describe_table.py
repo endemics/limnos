@@ -60,61 +60,69 @@ def register(mcp: FastMCP) -> None:
                  total_rows, total_bytes, total_files, total_partitions,
                  metadata_age_hours, sql_hint (example partition-filtered query).
         """
-        state  = ctx.request_context.lifespan_state
+        state = ctx.request_context.lifespan_state
         config = state["config"]
         cache: SchemaCache = state["cache"]
         engine = state["duckdb_engine"]
 
         table_cfg = config.get_table(params.table)
         if not table_cfg:
-            return json.dumps({
-                "error": f"Table '{params.table}' not found.",
-                "available_tables": config.table_names,
-            })
+            return json.dumps(
+                {
+                    "error": f"Table '{params.table}' not found.",
+                    "available_tables": config.table_names,
+                }
+            )
 
         # Check cache freshness
         meta = cache.get(params.table)
         needs_refresh = (
             params.force_refresh
             or meta is None
-            or (meta.freshness_hours > config.cache.stale_threshold_hours
-                and config.cache.auto_refresh)
+            or (
+                meta.freshness_hours > config.cache.stale_threshold_hours
+                and config.cache.auto_refresh
+            )
         )
 
         if needs_refresh:
-            await ctx.report_progress(0.1, f"Scanning {table_cfg.format} metadata from S3...")
+            await ctx.report_progress(
+                0.1, f"Scanning {table_cfg.format} metadata from S3..."
+            )
             meta = await _scan_metadata(table_cfg, engine, cache)
             await ctx.report_progress(1.0, "Done")
 
         # Build SQL hint showing how to use partition filters
         sql_hint = _build_sql_hint(meta)
 
-        return json.dumps({
-            "name":             meta.table_name,
-            "format":           meta.format,
-            "s3_path":          meta.s3_path,
-            "description":      meta.description,
-            "columns": [
-                {
-                    "name":  c.name,
-                    "dtype": c.dtype,
-                    "estimated_bytes_per_row": c.estimated_bytes_per_row,
-                    "null_fraction": c.null_fraction,
-                }
-                for c in meta.columns
-            ],
-            "partition_columns": [
-                {"name": p.name, "dtype": p.dtype}
-                for p in meta.partition_columns
-            ],
-            "total_rows":        meta.total_rows,
-            "total_bytes":       meta.total_bytes,
-            "total_files":       meta.total_files,
-            "total_partitions":  meta.total_partitions,
-            "size_human":        meta.size_human,
-            "metadata_age_hours": round(meta.freshness_hours, 1),
-            "sql_hint":          sql_hint,
-        }, indent=2)
+        return json.dumps(
+            {
+                "name": meta.table_name,
+                "format": meta.format,
+                "s3_path": meta.s3_path,
+                "description": meta.description,
+                "columns": [
+                    {
+                        "name": c.name,
+                        "dtype": c.dtype,
+                        "estimated_bytes_per_row": c.estimated_bytes_per_row,
+                        "null_fraction": c.null_fraction,
+                    }
+                    for c in meta.columns
+                ],
+                "partition_columns": [
+                    {"name": p.name, "dtype": p.dtype} for p in meta.partition_columns
+                ],
+                "total_rows": meta.total_rows,
+                "total_bytes": meta.total_bytes,
+                "total_files": meta.total_files,
+                "total_partitions": meta.total_partitions,
+                "size_human": meta.size_human,
+                "metadata_age_hours": round(meta.freshness_hours, 1),
+                "sql_hint": sql_hint,
+            },
+            indent=2,
+        )
 
 
 async def _scan_metadata(table_cfg, engine, cache: SchemaCache) -> TableMeta:
@@ -122,9 +130,7 @@ async def _scan_metadata(table_cfg, engine, cache: SchemaCache) -> TableMeta:
     import asyncio
 
     if table_cfg.format == "iceberg":
-        iceberg_meta = await asyncio.to_thread(
-            read_iceberg_metadata, table_cfg.s3_path
-        )
+        iceberg_meta = await asyncio.to_thread(read_iceberg_metadata, table_cfg.s3_path)
         columns = [
             ColumnMeta(
                 name=c.name,
@@ -188,7 +194,7 @@ async def _scan_metadata(table_cfg, engine, cache: SchemaCache) -> TableMeta:
             format="parquet",
             columns=columns,
             partition_columns=partition_cols,
-            total_rows=0,       # too expensive to count here
+            total_rows=0,  # too expensive to count here
             total_bytes=total_bytes,
             total_files=total_files,
             total_partitions=len(partitions),

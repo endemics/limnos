@@ -141,9 +141,7 @@ class SchemaCache:
         return [r[0] for r in rows]
 
     def delete(self, table_name: str) -> None:
-        self._con.execute(
-            "DELETE FROM table_meta WHERE table_name = ?", (table_name,)
-        )
+        self._con.execute("DELETE FROM table_meta WHERE table_name = ?", (table_name,))
         self._con.commit()
 
     def close(self) -> None:

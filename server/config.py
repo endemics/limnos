@@ -45,7 +45,7 @@ class TableConfig(BaseModel):
 
 
 class EngineConfig(BaseModel):
-    duckdb_max_scan_bytes: int = 10 * 1024 ** 3   # 10 GB
+    duckdb_max_scan_bytes: int = 10 * 1024**3  # 10 GB
     default_row_limit: int = 1000
     max_row_limit: int = 50_000
     worker_pool_size: int = 4
@@ -58,11 +58,11 @@ class CacheConfig(BaseModel):
     auto_refresh: bool = True
     # ── Query result cache ────────────────────────────────────────────────────
     result_cache_enabled: bool = True
-    result_cache_ttl_seconds: int = 3600                            # 1 hour
-    result_cache_backend: str = "sqlite"                            # sqlite | duckdb | redis
+    result_cache_ttl_seconds: int = 3600  # 1 hour
+    result_cache_backend: str = "sqlite"  # sqlite | duckdb | redis
     result_cache_db_path: str = "/tmp/limnos_result_cache.duckdb"  # duckdb backend only
-    redis_url: str = "redis://localhost:6379"                       # redis backend only
-    result_cache_skip_low_confidence: bool = True                   # set False for JSON/CSV
+    redis_url: str = "redis://localhost:6379"  # redis backend only
+    result_cache_skip_low_confidence: bool = True  # set False for JSON/CSV
 
 
 class CostGatesConfig(BaseModel):
