@@ -1,6 +1,6 @@
 # Limnos
 
-Natural language querying of S3 Parquet/Iceberg data lakes via the Model Context Protocol (MCP). Ask Claude questions about your data; Limnos handles schema discovery, query planning, execution, and cost control — no SQL required.
+Natural language querying of S3 data lakes via the Model Context Protocol (MCP). Ask Claude questions about your data; Limnos handles schema discovery, query planning, execution, and cost control — no SQL required. Supports Parquet and Iceberg today, with CSV, JSON, and other flat file formats planned.
 
 ## Cost control
 
@@ -208,17 +208,32 @@ Flat file formats (CSV, JSON, NDJSON, TXT) detect schema once on first `describe
 
 ## Development
 
-### Prerequisites
+### Recommended: devcontainer
 
-- Python 3.11+
-- Go 1.21+
-- [golangci-lint](https://golangci-lint.run/) (installed by `make dev-tools`)
+The repository includes a devcontainer configuration that provides a fully pre-configured development environment. Open the repo in VS Code (or any editor that supports the Dev Containers spec) and choose **Reopen in Container**.
 
-### First-time setup
+The container includes:
+- Go 1.26, Python 3.13, Node 20, AWS CLI
+- golangci-lint, goimports, pytest, ruff — all pre-installed
+- Claude Code CLI pre-installed
+- VS Code extensions for Go, Python, Ruff, and Claude Code auto-installed
+- AWS credentials (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`) passed through from your host environment
+- `~/.claude` mounted from the host so your Claude Code settings and memory persist
+
+After the container starts, the only manual step is installing the pre-commit hook:
+
+```bash
+make install-hooks
+```
+
+### Manual setup (without devcontainer)
+
+**Prerequisites:** Python 3.11+, Go 1.21+
 
 ```bash
 make dev-tools
 pip install -r server/requirements.txt pytest pytest-cov ruff
+make install-hooks
 ```
 
 ### Common tasks
@@ -236,11 +251,7 @@ pip install -r server/requirements.txt pytest pytest-cov ruff
 
 ### Pre-commit hook
 
-`make dev-tools` (or `make install-hooks`) configures git to run `make check` before every commit:
-
-```bash
-make install-hooks   # one-time; re-run after cloning
-```
+`make install-hooks` configures git to run `make check` before every commit:
 
 To bypass for a work-in-progress commit:
 
@@ -258,6 +269,8 @@ GitHub Actions runs the same `make check` quality gate on every push and pull re
 
 ```
 limnos/
+├── .devcontainer/
+│   └── devcontainer.json      # Dev container (Go + Python + tools pre-installed)
 ├── server/                    # Python MCP server
 │   ├── main.py                # Entry point (stdio or HTTP transport)
 │   ├── catalog/
