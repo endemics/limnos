@@ -145,6 +145,69 @@ class DuckDBEngine:
         except duckdb.Error:
             return -1
 
+    def get_flat_file_schema(
+        self,
+        s3_path: str,
+        fmt: str,
+        delimiter: str = ",",
+        has_header: bool = True,
+        json_format: str = "auto",
+        glob_pattern: Optional[str] = None,
+    ) -> tuple[List[Dict[str, str]], float]:
+        """Detect schema and estimate bytes-per-row for a flat file table.
+
+        Returns (columns, bytes_per_row_estimate).
+        TXT returns a hardcoded single-column schema without querying S3.
+        CSV/JSON/NDJSON run a DESCRIBE + 10k-row sample against S3.
+        """
+        if fmt == "txt":
+            return [{"name": "line", "type": "VARCHAR"}], 80.0
+
+        base = s3_path.rstrip("/")
+        if glob_pattern:
+            glob = f"{base}/{glob_pattern.lstrip('/')}"
+        elif fmt == "csv":
+            glob = f"{base}/**/*.csv"
+        elif fmt == "json":
+            glob = f"{base}/**/*.json"
+        else:  # ndjson
+            glob = f"{base}/**/*.ndjson"
+
+        if fmt == "csv":
+            header_opt = "true" if has_header else "false"
+            source = (
+                f"read_csv('{glob}', auto_detect=true, "
+                f"delim='{delimiter}', header={header_opt})"
+            )
+        elif fmt == "ndjson":
+            source = f"read_json('{glob}', format='newline_delimited')"
+        else:  # json
+            source = f"read_json('{glob}', format='{json_format}')"
+        row_source = source
+
+        try:
+            rel = self._con.execute(f"DESCRIBE SELECT * FROM {source} LIMIT 0")
+            columns = [{"name": r[0], "type": r[1]} for r in rel.fetchall()]
+        except duckdb.Error as e:
+            raise QueryError(f"Failed to read {fmt} schema from {s3_path}: {e}") from e
+
+        # One-time bytes-per-row sample (10k rows)
+        try:
+            # STRUCT_PACK(*) converts a row to a struct; casting to VARCHAR gives
+            # a JSON-like string whose length is a reasonable bytes-per-row proxy.
+            sample_sql = (
+                f"SELECT COUNT(*) AS n, "
+                f"SUM(LENGTH(CAST(STRUCT_PACK(*) AS VARCHAR))) AS b "
+                f"FROM (SELECT * FROM {row_source} LIMIT 10000)"
+            )
+            result = self._con.execute(sample_sql).fetchone()
+            n, b = result if result else (0, 0)
+            bytes_per_row = float(b) / n if n and n > 0 else 200.0
+        except duckdb.Error:
+            bytes_per_row = 200.0  # safe fallback
+
+        return columns, bytes_per_row
+
     def close(self) -> None:
         self._con.close()
 

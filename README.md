@@ -197,12 +197,12 @@ cache:
 |--------|--------|-------|
 | `parquet` | Supported | Hive-style partitioning, columnar pruning |
 | `iceberg` | Supported | Direct S3 metadata, exact row counts |
-| `csv` | Planned | Auto-detect schema; configurable delimiter |
-| `json` | Planned | Records, array, or auto format |
-| `ndjson` | Planned | Newline-delimited JSON (log files) |
-| `txt` | Planned | Single-column `line VARCHAR` |
+| `csv` | Supported | Auto-detect schema; configurable delimiter |
+| `json` | Supported | Records, array, or auto format |
+| `ndjson` | Supported | Newline-delimited JSON (log files) |
+| `txt` | Supported | Single-column `line VARCHAR` |
 
-Flat file formats (CSV, JSON, NDJSON, TXT) detect schema once on first `describe_table` and cache it — subsequent queries use the SQLite cache with no re-scanning. Athena fallback is supported via auto-provisioned Glue external tables. See [docs/flat-file-formats.md](docs/flat-file-formats.md) for the full design.
+Flat file formats detect schema once on first `describe_table` and cache it — subsequent queries use the SQLite cache with no re-scanning. Athena fallback is supported via auto-provisioned Glue external tables (requires `glue:CreateTable`/`glue:UpdateTable` IAM permissions; gracefully skipped if absent). See [docs/flat-file-formats.md](docs/flat-file-formats.md) for implementation details.
 
 ---
 

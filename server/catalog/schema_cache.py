@@ -44,6 +44,7 @@ class TableMeta:
     avg_row_groups_per_file: int
     description: str = ""
     last_refreshed: Optional[datetime] = None
+    bytes_per_row_estimate: Optional[float] = None
 
     @property
     def freshness_hours(self) -> float:
@@ -88,13 +89,21 @@ class SchemaCache:
             );
         """)
         self._con.commit()
+        # Migration: add bytes_per_row_estimate column for flat file formats
+        try:
+            self._con.execute(
+                "ALTER TABLE table_meta ADD COLUMN bytes_per_row_estimate REAL"
+            )
+            self._con.commit()
+        except sqlite3.OperationalError:
+            pass  # column already exists
 
     def upsert(self, meta: TableMeta) -> None:
         now = datetime.now(tz=timezone.utc).isoformat()
         self._con.execute(
             """
             INSERT OR REPLACE INTO table_meta VALUES
-            (?,?,?,?,?,?,?,?,?,?,?,?)
+            (?,?,?,?,?,?,?,?,?,?,?,?,?)
             """,
             (
                 meta.table_name,
@@ -109,6 +118,7 @@ class SchemaCache:
                 meta.avg_row_groups_per_file,
                 meta.description,
                 now,
+                meta.bytes_per_row_estimate,
             ),
         )
         self._con.commit()
@@ -132,6 +142,7 @@ class SchemaCache:
             avg_row_groups_per_file=row[9],
             description=row[10],
             last_refreshed=datetime.fromisoformat(row[11]),
+            bytes_per_row_estimate=row[12] if len(row) > 12 else None,
         )
 
     def list_tables(self) -> List[str]:

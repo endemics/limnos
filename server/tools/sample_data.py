@@ -10,6 +10,36 @@ from pydantic import BaseModel, ConfigDict, Field
 from tools import format_table
 
 
+def _duckdb_source(table_cfg) -> str:
+    """Return the DuckDB table-valued function for a given format."""
+    p = table_cfg.s3_path
+    fmt = table_cfg.format
+    if fmt == "parquet":
+        return f"read_parquet('{p}**/*.parquet', hive_partitioning=true)"
+    if fmt == "iceberg":
+        return f"iceberg_scan('{p}')"
+    if fmt == "csv":
+        glob = table_cfg.glob_pattern or "**/*.csv"
+        return (
+            f"read_csv('{p}{glob.lstrip('/')}', auto_detect=true, "
+            f"delim='{table_cfg.delimiter}', "
+            f"header={'true' if table_cfg.has_header else 'false'})"
+        )
+    if fmt == "json":
+        glob = table_cfg.glob_pattern or "**/*.json"
+        return f"read_json('{p}{glob.lstrip('/')}', format='{table_cfg.json_format}')"
+    if fmt == "ndjson":
+        glob = table_cfg.glob_pattern or "**/*.ndjson"
+        return f"read_json('{p}{glob.lstrip('/')}', format='newline_delimited')"
+    if fmt == "txt":
+        glob = table_cfg.glob_pattern or "**/*.txt"
+        return (
+            f"read_csv('{p}{glob.lstrip('/')}', sep='\\n', header=false, "
+            f"columns={{'line': 'VARCHAR'}})"
+        )
+    return f"read_parquet('{p}**/*.parquet', hive_partitioning=true)"
+
+
 class SampleDataInput(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
 
@@ -79,19 +109,8 @@ def register(mcp: FastMCP) -> None:
             return f"Table '{params.table}' not found. Use datalake_list_datasets."
 
         col_clause = ", ".join(params.columns) if params.columns else "*"
-
-        if table_cfg.format == "parquet":
-            sql = (
-                f"SELECT {col_clause} "
-                f"FROM read_parquet('{table_cfg.s3_path}**/*.parquet', hive_partitioning=true) "
-                f"LIMIT {params.n}"
-            )
-        else:
-            sql = (
-                f"SELECT {col_clause} "
-                f"FROM iceberg_scan('{table_cfg.s3_path}') "
-                f"LIMIT {params.n}"
-            )
+        source = _duckdb_source(table_cfg)
+        sql = f"SELECT {col_clause} FROM {source} LIMIT {params.n}"
 
         result = engine.query(sql, row_limit=params.n)
         table_md = format_table(result.rows, result.columns)
@@ -209,7 +228,7 @@ def register(mcp: FastMCP) -> None:
             return f"Table '{params.table}' not found."
 
         await ctx.report_progress(0.1, f"Scanning S3 metadata for '{params.table}'...")
-        meta = await _scan_metadata(table_cfg, engine, cache)
+        meta = await _scan_metadata(table_cfg, engine, cache, config)
 
         # Invalidate cached query results — schema changed, old results may be stale
         if result_cache:
@@ -239,9 +258,11 @@ async def _nl_to_sql(question: str, meta, table_cfg) -> str:
     schema_lines = "\n".join(f"  {c.name} {c.dtype}" for c in meta.columns)
     partition_info = ", ".join(p.name for p in meta.partition_columns) or "none"
 
+    source = _duckdb_source(table_cfg)
     system = (
         "You are a SQL expert. Convert the user's question to a single DuckDB SQL query.\n"
         "Rules:\n"
+        "- Use the exact DuckDB source expression provided in the prompt as the FROM clause\n"
         "- Use partition columns in WHERE clauses whenever relevant\n"
         "- Never use SELECT * — only select needed columns\n"
         "- Add LIMIT 1000 unless the question asks for aggregates\n"
@@ -251,6 +272,7 @@ async def _nl_to_sql(question: str, meta, table_cfg) -> str:
         f"Table: {table_cfg.name}\n"
         f"S3 path: {table_cfg.s3_path}\n"
         f"Format: {table_cfg.format}\n"
+        f"DuckDB source (use as FROM clause): {source}\n"
         f"Partition columns: {partition_info}\n"
         f"Columns:\n{schema_lines}\n\n"
         f"Question: {question}"

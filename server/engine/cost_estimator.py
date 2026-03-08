@@ -25,6 +25,8 @@ from config import Config
 
 logger = structlog.get_logger()
 
+_FLAT_FILE_FORMATS = {"csv", "json", "ndjson", "txt"}
+
 # AWS pricing constants (us-east-1, as of 2025)
 ATHENA_PRICE_PER_TB_USD = 5.00
 ATHENA_MIN_BYTES = 10 * 1024 * 1024  # 10 MB minimum per query
@@ -84,7 +86,11 @@ class CostEstimator:
 
         # ── Column pruning ──────────────────────────────────────────────────
         selected_cols = _extract_selected_columns(sql)
-        col_fraction = _column_size_fraction(selected_cols, meta)
+        # Flat files have no columnar storage; the entire file is always read.
+        if meta.format in _FLAT_FILE_FORMATS:
+            col_fraction = 1.0
+        else:
+            col_fraction = _column_size_fraction(selected_cols, meta)
 
         # ── Partition pruning ───────────────────────────────────────────────
         partition_col_names = [p.name for p in meta.partition_columns]
@@ -96,7 +102,11 @@ class CostEstimator:
         estimated_files = max(1, int(meta.total_files * partition_fraction))
 
         # ── S3 GET cost ─────────────────────────────────────────────────────
-        avg_row_groups = meta.avg_row_groups_per_file or 4
+        # Flat files are read whole (no row groups); 1 GET per file.
+        if meta.format in _FLAT_FILE_FORMATS:
+            avg_row_groups = 1
+        else:
+            avg_row_groups = meta.avg_row_groups_per_file or 4
         s3_gets = estimated_files * avg_row_groups
         s3_get_cost = (s3_gets / 1000) * S3_GET_PRICE_PER_1000_USD
 

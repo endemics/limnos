@@ -460,7 +460,7 @@ For most teams, **Docker on a small EC2 instance** (t3.medium, ~$30/mo) is the r
 - [x] Iceberg metadata integration (direct S3 reads)
 - [x] Query result cache (SQLite / DuckDB / Redis backends)
 - [ ] Schema auto-refresh (EventBridge cron)
-- [ ] Flat file formats (CSV, JSON, NDJSON, TXT) — see Section 11
+- [x] Flat file formats (CSV, JSON, NDJSON, TXT) — see Section 11
 
 ### Phase 4 — Multi-user / Team ✅ (partial)
 - [x] MCP over HTTP/SSE transport (streamable HTTP)

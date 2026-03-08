@@ -1,6 +1,6 @@
 # Flat File Format Support — Implementation Specification
 
-> **Status: Planned.** See [limnos.md § 11](limnos.md#11-planned-flat-file-format-support-csv-json-ndjson-txt) for the architectural overview.
+> **Status: Implemented.** See [limnos.md § 11](limnos.md#11-planned-flat-file-format-support-csv-json-ndjson-txt) for the architectural overview.
 
 This document is the detailed implementation reference for adding CSV, JSON, NDJSON, and TXT support to Limnos.
 

@@ -15,11 +15,15 @@ class AwsConfig(BaseModel):
     secret_access_key: str = ""
     athena_output_location: str = ""
     athena_workgroup: str = "primary"
+    glue_database: str = "default"
 
 
 class PartitionColumnConfig(BaseModel):
     name: str
     type: str = "string"
+
+
+_SUPPORTED_FORMATS = ("parquet", "iceberg", "csv", "json", "ndjson", "txt")
 
 
 class TableConfig(BaseModel):
@@ -28,12 +32,17 @@ class TableConfig(BaseModel):
     format: str = "parquet"
     partition_columns: List[PartitionColumnConfig] = Field(default_factory=list)
     description: str = ""
+    # Flat file options (ignored for parquet/iceberg)
+    delimiter: str = ","
+    has_header: bool = True
+    json_format: str = "auto"  # "records" | "array" | "newline_delimited" | "auto"
+    glob_pattern: Optional[str] = None  # override default **/*.{ext}
 
     @field_validator("format")
     @classmethod
     def validate_format(cls, v: str) -> str:
-        if v not in ("parquet", "iceberg"):
-            raise ValueError(f"format must be 'parquet' or 'iceberg', got: {v}")
+        if v not in _SUPPORTED_FORMATS:
+            raise ValueError(f"format must be one of {_SUPPORTED_FORMATS}, got: {v}")
         return v
 
     @field_validator("s3_path")

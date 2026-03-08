@@ -4,4 +4,5 @@ duckdb
 mcp[cli]
 pydantic
 pyyaml
+sqlglot
 structlog

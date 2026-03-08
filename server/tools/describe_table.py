@@ -7,9 +7,14 @@ import json
 from mcp.server.fastmcp import FastMCP, Context
 from pydantic import BaseModel, ConfigDict, Field
 
+import structlog
+
 from catalog.schema_cache import SchemaCache, TableMeta, ColumnMeta, PartitionMeta
 from catalog.hive import discover_partitions
 from catalog.iceberg import read_iceberg_metadata
+from catalog.glue import GlueProvisioner
+
+logger = structlog.get_logger()
 
 
 class DescribeTableInput(BaseModel):
@@ -89,7 +94,7 @@ def register(mcp: FastMCP) -> None:
             await ctx.report_progress(
                 0.1, f"Scanning {table_cfg.format} metadata from S3..."
             )
-            meta = await _scan_metadata(table_cfg, engine, cache)
+            meta = await _scan_metadata(table_cfg, engine, cache, config)
             await ctx.report_progress(1.0, "Done")
 
         # Build SQL hint showing how to use partition filters
@@ -125,7 +130,9 @@ def register(mcp: FastMCP) -> None:
         )
 
 
-async def _scan_metadata(table_cfg, engine, cache: SchemaCache) -> TableMeta:
+async def _scan_metadata(
+    table_cfg, engine, cache: SchemaCache, config=None
+) -> TableMeta:
     """Refresh metadata by reading from S3."""
     import asyncio
 
@@ -156,6 +163,75 @@ async def _scan_metadata(table_cfg, engine, cache: SchemaCache) -> TableMeta:
             avg_row_groups_per_file=4,
             description=table_cfg.description,
         )
+    elif table_cfg.format in ("csv", "json", "ndjson", "txt"):
+        # Flat file — detect schema via DuckDB, discover partitions via S3
+        columns_raw, bpr = await asyncio.to_thread(
+            engine.get_flat_file_schema,
+            table_cfg.s3_path,
+            table_cfg.format,
+            table_cfg.delimiter,
+            table_cfg.has_header,
+            table_cfg.json_format,
+            table_cfg.glob_pattern,
+        )
+        columns = [
+            ColumnMeta(
+                name=c["name"],
+                dtype=c["type"],
+                estimated_bytes_per_row=_dtype_to_bytes(c["type"]),
+            )
+            for c in columns_raw
+        ]
+
+        partitions, discovered_partition_cols = await asyncio.to_thread(
+            discover_partitions, table_cfg.s3_path
+        )
+        if table_cfg.partition_columns:
+            partition_cols = [
+                PartitionMeta(name=p.name, dtype=p.type)
+                for p in table_cfg.partition_columns
+            ]
+        else:
+            partition_cols = [
+                PartitionMeta(name=name, dtype="string")
+                for name in discovered_partition_cols
+            ]
+
+        total_bytes = sum(p.total_bytes for p in partitions)
+        total_files = sum(p.file_count for p in partitions)
+
+        meta = TableMeta(
+            table_name=table_cfg.name,
+            s3_path=table_cfg.s3_path,
+            format=table_cfg.format,
+            columns=columns,
+            partition_columns=partition_cols,
+            total_rows=0,
+            total_bytes=total_bytes,
+            total_files=total_files,
+            total_partitions=len(partitions),
+            avg_row_groups_per_file=1,
+            description=table_cfg.description,
+            bytes_per_row_estimate=bpr,
+        )
+
+        # Auto-provision Glue external table so Athena fallback works.
+        # TXT is excluded — Athena has no useful capability over unstructured text.
+        if table_cfg.format != "txt" and config is not None:
+            try:
+                await asyncio.to_thread(
+                    GlueProvisioner(config).sync_table,
+                    table_cfg,
+                    columns,
+                    partition_cols,
+                )
+            except Exception:
+                logger.warning(
+                    "glue_provision_failed",
+                    table=table_cfg.name,
+                    exc_info=True,
+                )
+
     else:
         # Parquet — read schema via DuckDB, discover partitions via S3
         raw_schema = await asyncio.to_thread(
@@ -206,6 +282,18 @@ async def _scan_metadata(table_cfg, engine, cache: SchemaCache) -> TableMeta:
     return meta
 
 
+_FORMAT_SOURCE = {
+    "parquet": lambda p: f"read_parquet('{p}**/*.parquet', hive_partitioning=true)",
+    "iceberg": lambda p: f"iceberg_scan('{p}')",
+    "csv": lambda p: f"read_csv('{p}**/*.csv', auto_detect=true)",
+    "json": lambda p: f"read_json('{p}**/*.json', format='auto')",
+    "ndjson": lambda p: f"read_json('{p}**/*.ndjson', format='newline_delimited')",
+    "txt": lambda p: (
+        f"read_csv('{p}**/*.txt', sep='\\n', header=false, columns={{'line': 'VARCHAR'}})"
+    ),
+}
+
+
 def _build_sql_hint(meta: TableMeta) -> str:
     col_names = ", ".join(c.name for c in meta.columns[:6])
     if len(meta.columns) > 6:
@@ -217,12 +305,10 @@ def _build_sql_hint(meta: TableMeta) -> str:
     else:
         filter_example = "-- (no partition columns — full scan required)"
 
-    return (
-        f"SELECT {col_names}\n"
-        f"FROM read_parquet('{meta.s3_path}**/*.parquet', hive_partitioning=true)\n"
-        f"{filter_example}\n"
-        f"LIMIT 1000"
-    )
+    source_fn = _FORMAT_SOURCE.get(meta.format, _FORMAT_SOURCE["parquet"])
+    source = source_fn(meta.s3_path)
+
+    return f"SELECT {col_names}\nFROM {source}\n{filter_example}\nLIMIT 1000"
 
 
 def _dtype_to_bytes(dtype: str) -> float:

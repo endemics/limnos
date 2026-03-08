@@ -11,6 +11,8 @@ aws:
   # Athena settings (for fallback queries)
   athena_output_location: "s3://your-bucket/athena-results/"
   athena_workgroup: "primary"
+  # Glue database used when auto-provisioning external tables for flat file formats
+  glue_database: "default"
 
 # Tables registered for querying.
 # Each entry maps a logical name to an S3 path.
@@ -34,6 +36,19 @@ tables:
     s3_path: "s3://your-datalake/warehouse/products/"
     format: parquet
     description: "Product catalog — small, no partitions"
+
+  # Flat file examples
+  - name: orders_csv
+    s3_path: "s3://your-datalake/exports/orders/"
+    format: csv
+    delimiter: ","
+    has_header: true
+    description: "CSV order export, one file per day"
+
+  - name: app_logs
+    s3_path: "s3://your-datalake/logs/app/"
+    format: ndjson
+    description: "Newline-delimited JSON application logs"
 
 # Query engine settings
 engine:
