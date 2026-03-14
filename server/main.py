@@ -23,9 +23,7 @@ from tools import (
     list_datasets,
     describe_table,
     sample_data,
-    estimate_query,
     query,
-    refresh_schema,
 )
 from config import load_config
 
@@ -98,9 +96,7 @@ If a query is estimated to be expensive, explain the cost to the user and ask fo
 list_datasets.register(mcp)
 describe_table.register(mcp)
 sample_data.register(mcp)
-estimate_query.register(mcp)
 query.register(mcp)
-refresh_schema.register(mcp)
 
 
 # ─── CLI ──────────────────────────────────────────────────────────────────────
@@ -125,7 +121,32 @@ def main():
     if args.transport == "stdio":
         mcp.run(transport="stdio")
     else:
-        mcp.run(transport="streamable_http", port=args.port)
+        # Get the underlying FastAPI/Starlette app
+        app = mcp.sse_app()
+
+        # Add health check for the Go gateway
+        from starlette.responses import Response
+
+        @app.route("/health")
+        async def health(request):
+            return Response(status_code=200)
+
+        # Middleware to inject spend tracking headers
+        from tools.query import current_query_cost
+
+        @app.middleware("http")
+        async def inject_cost_header(request, call_next):
+            response = await call_next(request)
+            cost = current_query_cost.get()
+            if cost > 0:
+                response.headers["X-Limnos-Cost-USD"] = str(cost)
+                # Reset for next request in this worker
+                current_query_cost.set(0.0)
+            return response
+
+        import uvicorn
+
+        uvicorn.run(app, host="0.0.0.0", port=args.port)
 
 
 if __name__ == "__main__":
