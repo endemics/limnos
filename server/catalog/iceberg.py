@@ -190,5 +190,8 @@ def _parse_s3_path(s3_path: str) -> Tuple[str, str]:
     without_scheme = s3_path.removeprefix("s3://")
     parts = without_scheme.split("/", 1)
     bucket = parts[0]
-    prefix = parts[1].rstrip("/") + "/" if len(parts) > 1 else ""
+    if len(parts) > 1 and parts[1].rstrip("/"):
+        prefix = parts[1].rstrip("/") + "/"
+    else:
+        prefix = ""
     return bucket, prefix

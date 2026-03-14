@@ -77,10 +77,10 @@ func main() {
 	})
 
 	// ── HTTP router ─────────────────────────────────────────────────────────
-	proxy := mcp.NewProxy(pool, logger)
+	proxy := mcp.NewProxy(pool, authn, logger)
 
 	mux := http.NewServeMux()
-	mux.Handle("/mcp", authn.Middleware(proxy))                   // MCP streamable HTTP endpoint
+	mux.Handle("/mcp/", authn.Middleware(proxy))                  // MCP streamable HTTP endpoint
 	mux.Handle("/health", http.HandlerFunc(healthHandler))        // Health check (no auth)
 	mux.Handle("/metrics", http.HandlerFunc(pool.MetricsHandler)) // Worker pool metrics
 
@@ -129,8 +129,8 @@ func pythonPath() string {
 }
 
 func serverScriptPath(configPath string) string {
-	// Resolve relative to the gateway binary's working directory
-	return "../server/main.py"
+	// Resolve relative to the project root where the gateway is usually run
+	return "server/main.py"
 }
 
 func loadAPIKeys() map[string]auth.UserInfo {
