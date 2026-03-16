@@ -107,7 +107,8 @@ def register(mcp: FastMCP) -> None:
             if estimate.recommended_engine == "duckdb":
                 result = duckdb_engine.query(sql, row_limit=params.row_limit)
             else:
-                result = athena_engine.query(sql)
+                athena_sql = _translate_to_athena(sql, table_cfg, config.aws)
+                result = athena_engine.query(athena_sql)
         except Exception as e:
             return f"❌ **Query failed**\n\n```\n{e}\n```"
 
@@ -137,3 +138,23 @@ def _fallback_sql(question: str, table_cfg) -> str:
 
 def _format_explain(sql: str, estimate) -> str:
     return f"## Query Plan\n\n**{estimate.summary_line()}**\n\n```sql\n{sql}\n```"
+
+
+def _translate_to_athena(sql: str, table_cfg, aws_cfg) -> str:
+    glue_table = f'"{aws_cfg.glue_database}"."{table_cfg.name.replace("-", "_")}"'
+    sql = re.sub(
+        r"read_parquet\(['\"]s3://[^'\"]+['\"].*?\)",
+        glue_table,
+        sql,
+        flags=re.IGNORECASE,
+    )
+    sql = re.sub(
+        r"iceberg_scan\(['\"]s3://[^'\"]+['\"]\)", glue_table, sql, flags=re.IGNORECASE
+    )
+    sql = re.sub(
+        r"read_csv\(['\"]s3://[^'\"]+['\"].*?\)", glue_table, sql, flags=re.IGNORECASE
+    )
+    sql = re.sub(
+        r"read_json\(['\"]s3://[^'\"]+['\"].*?\)", glue_table, sql, flags=re.IGNORECASE
+    )
+    return sql
