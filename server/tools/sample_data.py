@@ -7,7 +7,7 @@ import json
 from mcp.server.fastmcp import FastMCP, Context
 from pydantic import BaseModel, ConfigDict, Field
 
-from tools import format_table
+from tools.formatting import format_table
 
 
 def _duckdb_source(table_cfg) -> str:
