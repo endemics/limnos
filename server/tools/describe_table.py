@@ -215,23 +215,6 @@ async def _scan_metadata(
             bytes_per_row_estimate=bpr,
         )
 
-        # Auto-provision Glue external table so Athena fallback works.
-        # TXT is excluded — Athena has no useful capability over unstructured text.
-        if table_cfg.format != "txt" and config is not None:
-            try:
-                await asyncio.to_thread(
-                    GlueProvisioner(config).sync_table,
-                    table_cfg,
-                    columns,
-                    partition_cols,
-                )
-            except Exception:
-                logger.warning(
-                    "glue_provision_failed",
-                    table=table_cfg.name,
-                    exc_info=True,
-                )
-
     else:
         # Parquet — read schema via DuckDB, discover partitions via S3
         raw_schema = await asyncio.to_thread(
@@ -277,6 +260,23 @@ async def _scan_metadata(
             avg_row_groups_per_file=4,
             description=table_cfg.description,
         )
+
+    # Auto-provision Glue external table so Athena fallback works.
+    # Exclude Iceberg (has own catalog) and TXT (no Athena support).
+    if table_cfg.format not in ("iceberg", "txt") and config is not None:
+        try:
+            await asyncio.to_thread(
+                GlueProvisioner(config).sync_table,
+                table_cfg,
+                columns,
+                partition_cols,
+            )
+        except Exception:
+            logger.warning(
+                "glue_provision_failed",
+                table=table_cfg.name,
+                exc_info=True,
+            )
 
     cache.upsert(meta)
     return meta
