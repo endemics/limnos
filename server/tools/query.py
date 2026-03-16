@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+from contextvars import ContextVar
 from typing import Optional
 
 from mcp.server.fastmcp import FastMCP, Context
@@ -10,6 +12,9 @@ from pydantic import BaseModel, ConfigDict, Field
 from catalog.result_cache import make_cache_key
 from tools.formatting import format_query_result
 from tools.sample_data import _nl_to_sql
+
+# ContextVar to communicate cost to the HTTP response headers in the middleware
+current_query_cost: ContextVar[float] = ContextVar("current_query_cost", default=0.0)
 
 
 class QueryInput(BaseModel):
@@ -80,6 +85,7 @@ def register(mcp: FastMCP) -> None:
 
         # ── Step 2: Cost estimation ─────────────────────────────────────────
         estimate = cost_estimator.estimate(params.table, sql)
+        current_query_cost.set(estimate.total_cost_usd)
 
         if params.explain_only:
             return _format_explain(sql, estimate)

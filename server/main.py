@@ -131,6 +131,19 @@ def main():
         async def health(request):
             return Response(status_code=200)
 
+        # Middleware to inject spend tracking headers
+        from tools.query import current_query_cost
+
+        @app.middleware("http")
+        async def inject_cost_header(request, call_next):
+            response = await call_next(request)
+            cost = current_query_cost.get()
+            if cost > 0:
+                response.headers["X-Limnos-Cost-USD"] = str(cost)
+                # Reset for next request in this worker
+                current_query_cost.set(0.0)
+            return response
+
         import uvicorn
 
         uvicorn.run(app, host="0.0.0.0", port=args.port)
