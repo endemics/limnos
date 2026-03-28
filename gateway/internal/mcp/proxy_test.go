@@ -25,9 +25,10 @@ func dummyAuth() *auth.APIKeyAuth {
 }
 
 func emptyPool() *queue.WorkerPool {
-	return queue.NewWorkerPool(queue.WorkerPoolConfig{
-		MaxWorkers: 0,
-	}, silentLogger())
+	pool, _ := queue.NewWorkerPool(queue.WorkerPoolConfig{
+		Size: 0,
+	})
+	return pool
 }
 
 // ── No healthy workers ─────────────────────────────────────────────────────────
