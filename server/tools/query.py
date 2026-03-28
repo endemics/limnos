@@ -88,6 +88,10 @@ def register(mcp: FastMCP) -> None:
         if estimate.block and not params.force:
             return f"🚫 **Query blocked** — estimated cost exceeds threshold.\n\n{estimate.summary_line()}"
 
+        if estimate.warning and not params.force:
+            # Soft warning — still execute, but surface the warning
+            await ctx.log_info(f"Cost warning: {estimate.warning}")
+
         # ── Step 4: Result cache check ───────────────────────────────────────
         effective_row_limit = params.row_limit or config.engine.default_row_limit
         cache_key = make_cache_key(params.table, sql, effective_row_limit)
@@ -107,6 +111,10 @@ def register(mcp: FastMCP) -> None:
 
         # ── Step 6: Format & return ──────────────────────────────────────────
         response = format_query_result(result, estimate.summary_line())
+
+        if estimate.warning:
+            response = f"⚠️ {estimate.warning}\n\n{response}"
+
         if result_cache:
             result_cache.put(
                 cache_key,
