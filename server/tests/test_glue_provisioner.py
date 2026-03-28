@@ -188,3 +188,17 @@ class TestGlueProvisionerSyncTable:
         prov.sync_table(table_cfg, _columns(), [])
 
         assert glue.create_table.call_args[1]["DatabaseName"] == "my_lake"
+
+    def test_parquet_uses_parquet_serde(self):
+        glue = MagicMock()
+        prov = self._make_provisioner(glue)
+        table_cfg = _make_table_cfg(fmt="parquet", s3_path="s3://bucket/parquet/")
+
+        prov.sync_table(table_cfg, _columns(), _partition_cols())
+
+        glue.create_table.assert_called_once()
+        call_kwargs = glue.create_table.call_args[1]
+        sd = call_kwargs["TableInput"]["StorageDescriptor"]
+        assert "ParquetHiveSerDe" in sd["SerdeInfo"]["SerializationLibrary"]
+        assert "MapredParquetInputFormat" in sd["InputFormat"]
+        assert "MapredParquetOutputFormat" in sd["OutputFormat"]

@@ -1,12 +1,12 @@
 """
-Glue auto-provisioner for flat file formats.
+Glue auto-provisioner for data lake tables.
 
 Creates or updates AWS Glue external tables so Athena can query flat files
-(CSV, JSON, NDJSON) without manual catalog setup. Called once during
-describe_table when metadata is first scanned for a flat file table.
+(CSV, JSON, NDJSON) and Parquet tables without manual catalog setup.
+Called once during describe_table when metadata is first scanned.
 
-TXT tables are excluded — Athena has no useful query capability over
-unstructured single-column text files.
+Iceberg tables are excluded (they use their own catalog).
+TXT tables are excluded (no Athena support).
 """
 
 from __future__ import annotations
@@ -32,29 +32,33 @@ _GLUE_TYPE_MAP: dict[str, str] = {
     "TIMESTAMP": "timestamp",
 }
 
-# (InputFormat, SerDe library) per format
-_SERDE: dict[str, tuple[str, str]] = {
+# (InputFormat, OutputFormat, SerDe library) per format
+_SERDE: dict[str, tuple[str, str, str]] = {
     "csv": (
         "org.apache.hadoop.mapred.TextInputFormat",
+        "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat",
         "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe",
     ),
     "json": (
         "org.apache.hadoop.mapred.TextInputFormat",
+        "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat",
         "org.openx.data.jsonserde.JsonSerDe",
     ),
     "ndjson": (
         "org.apache.hadoop.mapred.TextInputFormat",
+        "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat",
         "org.openx.data.jsonserde.JsonSerDe",
     ),
-    "txt": (
-        "org.apache.hadoop.mapred.TextInputFormat",
-        "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe",
+    "parquet": (
+        "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat",
+        "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat",
+        "org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe",
     ),
 }
 
 
 class GlueProvisioner:
-    """Create or update Glue external tables for flat file formats."""
+    """Create or update Glue external tables for data lake tables."""
 
     def __init__(self, config) -> None:
         self._glue = boto3.client("glue", region_name=config.aws.region)
@@ -67,13 +71,18 @@ class GlueProvisioner:
         partition_cols: list[PartitionMeta],
     ) -> None:
         """Create or update a Glue external table. Idempotent."""
-        input_fmt, serde_lib = _SERDE[table_cfg.format]
+        if table_cfg.format not in _SERDE:
+            return
+
+        input_fmt, output_fmt, serde_lib = _SERDE[table_cfg.format]
 
         serde_params: dict[str, str] = {}
         if table_cfg.format == "csv":
             serde_params["field.delim"] = table_cfg.delimiter
             if table_cfg.has_header:
                 serde_params["skip.header.line.count"] = "1"
+        elif table_cfg.format == "parquet":
+            serde_params["serialization.format"] = "1"
 
         glue_cols = [
             {
@@ -90,9 +99,7 @@ class GlueProvisioner:
                 "Columns": glue_cols,
                 "Location": table_cfg.s3_path,
                 "InputFormat": input_fmt,
-                "OutputFormat": (
-                    "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat"
-                ),
+                "OutputFormat": output_fmt,
                 "SerdeInfo": {
                     "SerializationLibrary": serde_lib,
                     "Parameters": serde_params,
@@ -100,6 +107,7 @@ class GlueProvisioner:
             },
             "PartitionKeys": glue_partitions,
             "TableType": "EXTERNAL_TABLE",
+            "Parameters": {"classification": table_cfg.format},
         }
 
         try:
