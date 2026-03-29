@@ -30,3 +30,4 @@ gateway/gateway
 .DS_Store
 *.tmp
 *.log
+config/config.yaml

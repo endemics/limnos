@@ -14,15 +14,20 @@ import (
 	"github.com/endemics/limnos/gateway/internal/queue"
 )
 
-// emptyPool returns a zero-value WorkerPool. Next() always returns false
-// because the workers slice is nil (len == 0).
-func emptyPool() *queue.WorkerPool {
-	return &queue.WorkerPool{}
-}
-
 // silentLogger discards all log output during tests.
 func silentLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{Level: slog.LevelError + 1}))
+}
+
+func dummyAuth() *auth.APIKeyAuth {
+	return auth.NewAPIKeyAuth(auth.APIKeyAuthConfig{})
+}
+
+func emptyPool() *queue.WorkerPool {
+	pool, _ := queue.NewWorkerPool(queue.WorkerPoolConfig{
+		Size: 0,
+	})
+	return pool
 }
 
 // ── No healthy workers ─────────────────────────────────────────────────────────
