@@ -33,7 +33,7 @@ func emptyPool() *queue.WorkerPool {
 // ── No healthy workers ─────────────────────────────────────────────────────────
 
 func TestProxy_NoWorkers_Returns503(t *testing.T) {
-	proxy := mcp.NewProxy(emptyPool(), dummyAuth(), silentLogger())
+	proxy := mcp.NewProxy(emptyPool(), silentLogger())
 
 	r := httptest.NewRequest("POST", "/mcp", nil)
 	w := httptest.NewRecorder()
@@ -45,7 +45,7 @@ func TestProxy_NoWorkers_Returns503(t *testing.T) {
 }
 
 func TestProxy_NoWorkers_BodyMentionsWorkers(t *testing.T) {
-	proxy := mcp.NewProxy(emptyPool(), dummyAuth(), silentLogger())
+	proxy := mcp.NewProxy(emptyPool(), silentLogger())
 
 	r := httptest.NewRequest("POST", "/mcp", nil)
 	w := httptest.NewRecorder()
@@ -62,7 +62,7 @@ func TestProxy_NoWorkers_BodyMentionsWorkers(t *testing.T) {
 func TestProxy_NoContext_AnonymousFallback_Returns503(t *testing.T) {
 	// No UserInfo in context → proxy treats as "anonymous" and still returns 503
 	// (no workers), not an auth error.
-	proxy := mcp.NewProxy(emptyPool(), dummyAuth(), silentLogger())
+	proxy := mcp.NewProxy(emptyPool(), silentLogger())
 
 	r := httptest.NewRequest("GET", "/mcp", nil)
 	w := httptest.NewRecorder()
@@ -75,7 +75,7 @@ func TestProxy_NoContext_AnonymousFallback_Returns503(t *testing.T) {
 
 func TestProxy_AuthenticatedUser_NoWorkers_Returns503(t *testing.T) {
 	// Valid user in context, but still no workers → 503.
-	proxy := mcp.NewProxy(emptyPool(), dummyAuth(), silentLogger())
+	proxy := mcp.NewProxy(emptyPool(), silentLogger())
 
 	r := httptest.NewRequest("POST", "/mcp", nil)
 	ctx := context.WithValue(r.Context(), auth.UserInfoKey, auth.UserInfo{UserID: "alice", BudgetUSD: 10})
@@ -99,7 +99,7 @@ func TestProxy_AuthMiddleware_MissingKey_Returns401(t *testing.T) {
 			"valid-key": {UserID: "alice"},
 		},
 	})
-	handler := authn.Middleware(mcp.NewProxy(emptyPool(), authn, silentLogger()))
+	handler := authn.Middleware(mcp.NewProxy(emptyPool(), silentLogger()))
 
 	r := httptest.NewRequest("POST", "/mcp", nil)
 	w := httptest.NewRecorder()
@@ -117,7 +117,7 @@ func TestProxy_AuthMiddleware_ValidKey_ThenNoWorkers_Returns503(t *testing.T) {
 			"valid-key": {UserID: "alice"},
 		},
 	})
-	handler := authn.Middleware(mcp.NewProxy(emptyPool(), authn, silentLogger()))
+	handler := authn.Middleware(mcp.NewProxy(emptyPool(), silentLogger()))
 
 	r := httptest.NewRequest("POST", "/mcp", nil)
 	r.Header.Set("X-API-Key", "valid-key")
@@ -136,7 +136,7 @@ func TestProxy_AuthMiddleware_BudgetExceeded_Returns429(t *testing.T) {
 		},
 	})
 	authn.RecordSpend("alice", 1.0) // exhaust budget
-	handler := authn.Middleware(mcp.NewProxy(emptyPool(), authn, silentLogger()))
+	handler := authn.Middleware(mcp.NewProxy(emptyPool(), silentLogger()))
 
 	r := httptest.NewRequest("POST", "/mcp", nil)
 	r.Header.Set("X-API-Key", "k")
